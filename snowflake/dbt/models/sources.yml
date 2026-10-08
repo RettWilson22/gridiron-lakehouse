@@ -1,0 +1,21 @@
+version: 2
+
+sources:
+  - name: gold
+    description: >
+      Gold tables produced on Databricks. On Snowflake they are read either through the
+      Iceberg views (gold_source=iceberg) or from the synced native tables
+      (gold_source=synced); both expose identical upper-case columns. DuckDB targets read
+      the same tables from parquet files via `external_location`.
+    schema: "{{ 'SYNCED' if var('gold_source') == 'synced' else 'ICEBERG' }}"
+    meta:
+      external_location: "read_parquet('{{ var('gold_dir') }}/{name}.parquet')"
+    tables:
+      - name: fourth_down_scored
+        description: Every fourth-down go / punt / field goal decision, scored by the model.
+      - name: team_season_summary
+        description: Regular-season offensive efficiency and fourth-down tendencies.
+      - name: game_summary
+        description: One row per game.
+      - name: coach_aggressiveness
+        description: Team-season go rate when the model recommended going for it.
