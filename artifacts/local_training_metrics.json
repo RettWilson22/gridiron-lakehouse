@@ -1,0 +1,83 @@
+{
+  "train_seasons": "2015-2023",
+  "test_seasons": [
+    2024,
+    2025
+  ],
+  "metrics": {
+    "conversion_test_n": 1746.0,
+    "conversion_test_base_rate": 0.5607,
+    "conversion_test_auc": 0.6604,
+    "conversion_test_brier": 0.2257,
+    "conversion_test_log_loss": 0.6429,
+    "conversion_train_n": 5814.0,
+    "baseline_test_auc": 0.6575,
+    "baseline_test_brier": 0.2257,
+    "baseline_test_log_loss": 0.6429,
+    "field_goal_test_n": 2087.0,
+    "field_goal_test_auc": 0.7483,
+    "field_goal_test_brier": 0.1147
+  },
+  "calibration": [
+    {
+      "bin": 0,
+      "n": 175,
+      "mean_predicted": 0.2569,
+      "observed_rate": 0.2457
+    },
+    {
+      "bin": 1,
+      "n": 175,
+      "mean_predicted": 0.359,
+      "observed_rate": 0.3886
+    },
+    {
+      "bin": 2,
+      "n": 174,
+      "mean_predicted": 0.4315,
+      "observed_rate": 0.4943
+    },
+    {
+      "bin": 3,
+      "n": 175,
+      "mean_predicted": 0.4905,
+      "observed_rate": 0.5257
+    },
+    {
+      "bin": 4,
+      "n": 174,
+      "mean_predicted": 0.5416,
+      "observed_rate": 0.6092
+    },
+    {
+      "bin": 5,
+      "n": 175,
+      "mean_predicted": 0.5845,
+      "observed_rate": 0.5943
+    },
+    {
+      "bin": 6,
+      "n": 174,
+      "mean_predicted": 0.6351,
+      "observed_rate": 0.6379
+    },
+    {
+      "bin": 7,
+      "n": 175,
+      "mean_predicted": 0.6671,
+      "observed_rate": 0.7314
+    },
+    {
+      "bin": 8,
+      "n": 174,
+      "mean_predicted": 0.6876,
+      "observed_rate": 0.6954
+    },
+    {
+      "bin": 9,
+      "n": 175,
+      "mean_predicted": 0.7098,
+      "observed_rate": 0.6857
+    }
+  ]
+}
