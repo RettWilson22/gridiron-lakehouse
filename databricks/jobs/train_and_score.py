@@ -55,7 +55,8 @@ def main(argv: list[str] | None = None) -> int:
     def table(name: str) -> str:
         return f"{args.catalog}.{args.schema}.{name}"
 
-    decisions: pd.DataFrame = spark.read.table(table("fourth_down_decisions")).toPandas()
+    decisions_sdf = spark.read.table(table("fourth_down_decisions"))
+    decisions: pd.DataFrame = decisions_sdf.toPandas()
     first_downs: pd.DataFrame = transforms.first_down_expected_points(
         spark.read.table(table("plays"))
     ).toPandas()
@@ -111,7 +112,10 @@ def main(argv: list[str] | None = None) -> int:
         # Going through a pyarrow Table (Spark >= 4.0) avoids pandas-version-specific
         # conversion paths for nullable and Arrow-backed string columns.
         (
-            spark.createDataFrame(pa.Table.from_pandas(frame, preserve_index=False))
+            transforms.cast_like(
+                spark.createDataFrame(pa.Table.from_pandas(frame, preserve_index=False)),
+                decisions_sdf.schema,
+            )
             .write.mode("overwrite")
             .option("overwriteSchema", "true")
             .saveAsTable(table(name))

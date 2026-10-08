@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 from gridiron import quality, transforms
@@ -55,14 +56,21 @@ def build_gold(sample_path: Path, model_path: Path, out_dir: Path) -> None:
         "team_season_summary": transforms.team_season_summary(plays, decisions),
         "game_summary": transforms.game_summary(plays, decisions),
     }
-    out_dir.mkdir(parents=True, exist_ok=True)
-    for name, frame in gold.items():
-        frame.toPandas().to_parquet(out_dir / f"{name}.parquet", index=False)
-
     model = DecisionModel.load(model_path)
     scored = score_decisions(gold["fourth_down_decisions"].toPandas(), model)
-    scored.to_parquet(out_dir / "fourth_down_scored.parquet", index=False)
-    coach_aggressiveness(scored).to_parquet(out_dir / "coach_aggressiveness.parquet", index=False)
+    # Same pandas -> Spark -> typed path as the Databricks train_and_score job.
+    for name, pdf in {
+        "fourth_down_scored": scored,
+        "coach_aggressiveness": coach_aggressiveness(scored),
+    }.items():
+        gold[name] = transforms.cast_like(
+            spark.createDataFrame(pa.Table.from_pandas(pdf, preserve_index=False)),
+            gold["fourth_down_decisions"].schema,
+        )
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name, sdf in gold.items():
+        pq.write_table(sdf.toArrow(), out_dir / f"{name}.parquet")
     spark.stop()
 
 

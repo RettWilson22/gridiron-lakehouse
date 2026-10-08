@@ -46,7 +46,14 @@ ignore = [
     "PLR0913", # data functions legitimately take several keyword arguments
     "PLR2004", # football constants (4th down, 10 yards) read better inline
     "N812",    # `functions as F` is the PySpark convention
+    "SIM108",  # an if/else block is often clearer than a long ternary
 ]
+
+[tool.ruff.lint.isort]
+# The repo has top-level `databricks/` and `snowflake/` folders (bundle and SQL), which
+# would otherwise make the vendor SDK namespaces look first-party.
+known-third-party = ["databricks", "snowflake"]
+known-first-party = ["gridiron"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004", "S101"]
@@ -54,7 +61,14 @@ ignore = [
 
 [tool.mypy]
 python_version = "3.12"
-files = ["src", "scripts", "tests", "databricks/jobs", "databricks/pipelines"]
+files = [
+    "src",
+    "scripts",
+    "tests",
+    "databricks/jobs",
+    "databricks/pipelines",
+    "snowflake/snowpark",
+]
 strict = true
 warn_unused_ignores = true
 explicit_package_bases = true

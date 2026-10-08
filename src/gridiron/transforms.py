@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pyspark.sql import Column, DataFrame, Window
 from pyspark.sql import functions as F
+from pyspark.sql.types import StructType
 
 from gridiron.config import FIELD_GOAL_PLAY_TYPE, GO_PLAY_TYPES, PUNT_PLAY_TYPE, SILVER_COLUMNS
 
@@ -214,4 +215,16 @@ def game_summary(plays: DataFrame, decisions: DataFrame) -> DataFrame:
             .when(F.col("away_score") > F.col("home_score"), F.col("away_team"))
             .otherwise(F.lit("TIE")),
         )
+    )
+
+
+def cast_like(df: DataFrame, reference: StructType) -> DataFrame:
+    """Cast columns that also exist in ``reference`` back to the reference types.
+
+    A round trip through pandas turns nullable integer columns into floats; this restores
+    the gold table types after scoring in pandas.
+    """
+    types = {field.name: field.dataType for field in reference.fields}
+    return df.select(
+        *(F.col(c).cast(types[c]).alias(c) if c in types else F.col(c) for c in df.columns)
     )

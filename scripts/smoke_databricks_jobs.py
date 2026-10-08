@@ -48,9 +48,9 @@ def main(argv: list[str] | None = None) -> int:
     spark.sql("CREATE DATABASE IF NOT EXISTS gridiron")
     spark.sql("CREATE DATABASE IF NOT EXISTS gridiron_serving")
     for name in ("plays", "fourth_down_decisions", "team_season_summary", "game_summary"):
-        spark.read.parquet(str(args.lakehouse_dir / name)).write.mode("overwrite").saveAsTable(
-            f"gridiron.{name}"
-        )
+        spark.read.parquet(str(args.lakehouse_dir / f"{name}.parquet")).write.mode(
+            "overwrite"
+        ).saveAsTable(f"gridiron.{name}")
 
     common = ["--catalog", "spark_catalog", "--schema", "gridiron"]
     load_job("train_and_score").main(
