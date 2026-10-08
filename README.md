@@ -16,6 +16,15 @@ leave the most points on the table?
 > Snowflake deployment steps are written out below but have not been run yet; results from
 > the first cloud run are marked "to be filled in".
 
+## Why both platforms?
+
+Many companies run Databricks and Snowflake side by side, often owned by different teams:
+data engineering and machine learning on Databricks, analytics and business reporting on
+Snowflake. The hard part is the handoff between them. This project shows that handoff done
+properly: Snowflake reads the Databricks tables in place through Apache Iceberg, with no
+duplicate copies and no nightly export job. For a single team starting from scratch, one
+platform would be enough; the point here is working across both.
+
 ## Architecture
 
 ```mermaid
