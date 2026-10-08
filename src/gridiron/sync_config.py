@@ -1,7 +1,9 @@
 """Configuration for the Databricks -> Snowflake fallback sync, read from the environment.
 
 Secrets are only ever read from environment variables (or a key file path) and are masked
-in ``repr`` so they cannot leak into logs.
+in ``repr`` so they cannot leak into logs. Databricks auth uses ``DATABRICKS_TOKEN`` when it is
+set; otherwise it reuses a Databricks CLI profile (``databricks auth login``), so no long-lived
+token has to exist at all.
 """
 
 from __future__ import annotations
@@ -13,11 +15,11 @@ from typing import Any
 REQUIRED = (
     "DATABRICKS_HOST",
     "DATABRICKS_HTTP_PATH",
-    "DATABRICKS_TOKEN",
     "SNOWFLAKE_ACCOUNT",
     "SNOWFLAKE_USER",
 )
 DEFAULTS = {
+    "DATABRICKS_CONFIG_PROFILE": "DEFAULT",
     "GRIDIRON_SOURCE_CATALOG": "workspace",
     "GRIDIRON_SOURCE_SCHEMA": "gridiron_serving",
     "SNOWFLAKE_ROLE": "GRIDIRON_LOADER",
@@ -35,7 +37,6 @@ class ConfigError(ValueError):
 class SyncConfig:
     databricks_host: str
     databricks_http_path: str
-    databricks_token: str = field(repr=False)
     source_catalog: str
     source_schema: str
     snowflake_account: str
@@ -46,6 +47,8 @@ class SyncConfig:
     snowflake_schema: str
     snowflake_private_key_file: str | None = None
     snowflake_password: str | None = field(default=None, repr=False)
+    databricks_token: str | None = field(default=None, repr=False)
+    databricks_profile: str = "DEFAULT"
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> SyncConfig:
@@ -63,7 +66,8 @@ class SyncConfig:
         return cls(
             databricks_host=env["DATABRICKS_HOST"].removeprefix("https://").rstrip("/"),
             databricks_http_path=env["DATABRICKS_HTTP_PATH"],
-            databricks_token=env["DATABRICKS_TOKEN"],
+            databricks_token=env.get("DATABRICKS_TOKEN") or None,
+            databricks_profile=get("DATABRICKS_CONFIG_PROFILE"),
             source_catalog=get("GRIDIRON_SOURCE_CATALOG"),
             source_schema=get("GRIDIRON_SOURCE_SCHEMA"),
             snowflake_account=env["SNOWFLAKE_ACCOUNT"],
@@ -77,11 +81,22 @@ class SyncConfig:
         )
 
     def databricks_connect_kwargs(self) -> dict[str, Any]:
-        return {
+        kwargs: dict[str, Any] = {
             "server_hostname": self.databricks_host,
             "http_path": self.databricks_http_path,
-            "access_token": self.databricks_token,
         }
+        if self.databricks_token:
+            kwargs["access_token"] = self.databricks_token
+        else:
+            kwargs["credentials_provider"] = self._cli_profile_credentials
+        return kwargs
+
+    def _cli_profile_credentials(self) -> Any:
+        """Auth headers from a Databricks CLI profile (OAuth login, refreshed automatically)."""
+        from databricks.sdk.core import Config  # noqa: PLC0415 (optional "sync" extra)
+
+        config = Config(profile=self.databricks_profile, host=f"https://{self.databricks_host}")
+        return config.authenticate
 
     def snowflake_connect_kwargs(self) -> dict[str, Any]:
         kwargs: dict[str, Any] = {

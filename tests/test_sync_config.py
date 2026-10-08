@@ -24,10 +24,10 @@ def test_from_env_applies_defaults_and_normalises_host() -> None:
 
 
 def test_missing_variables_are_all_reported() -> None:
-    env = {k: v for k, v in BASE.items() if k not in {"DATABRICKS_TOKEN", "SNOWFLAKE_USER"}}
+    env = {k: v for k, v in BASE.items() if k not in {"DATABRICKS_HOST", "SNOWFLAKE_USER"}}
     with pytest.raises(ConfigError) as err:
         SyncConfig.from_env(env)
-    assert "DATABRICKS_TOKEN" in str(err.value) and "SNOWFLAKE_USER" in str(err.value)
+    assert "DATABRICKS_HOST" in str(err.value) and "SNOWFLAKE_USER" in str(err.value)
 
 
 def test_requires_some_snowflake_credential() -> None:
@@ -43,3 +43,20 @@ def test_secrets_never_appear_in_repr_or_description() -> None:
     for text in (repr(config), str(config.describe())):
         assert "dapi-secret-token" not in text
         assert "hunter2" not in text
+
+
+def test_without_a_token_databricks_auth_comes_from_a_cli_profile() -> None:
+    env = {k: v for k, v in BASE.items() if k != "DATABRICKS_TOKEN"}
+    env["DATABRICKS_CONFIG_PROFILE"] = "gridiron"
+    config = SyncConfig.from_env(env)
+
+    kwargs = config.databricks_connect_kwargs()
+    assert "access_token" not in kwargs
+    assert callable(kwargs["credentials_provider"])
+    assert config.databricks_profile == "gridiron"
+
+
+def test_a_token_is_used_when_given() -> None:
+    kwargs = SyncConfig.from_env(BASE).databricks_connect_kwargs()
+    assert kwargs["access_token"] == BASE["DATABRICKS_TOKEN"]
+    assert "credentials_provider" not in kwargs
