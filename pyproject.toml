@@ -1,0 +1,93 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gridiron"
+version = "0.1.0"
+description = "NFL fourth-down decision lakehouse: Databricks for ingestion, transformation and ML; Snowflake for serving."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Rett Wilson" }]
+requires-python = ">=3.11"
+# Core dependencies are kept small and are all preinstalled on Databricks serverless.
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "pyarrow>=14",
+    "scikit-learn>=1.4",
+]
+
+[project.optional-dependencies]
+spark = ["pyspark>=4.0"]
+ml = ["mlflow-skinny>=2.16"]
+sync = ["databricks-sql-connector>=3.4", "snowflake-connector-python[pandas]>=3.12"]
+app = ["streamlit>=1.38", "duckdb>=1.1", "altair>=5"]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pandas-stubs",
+    "dbt-duckdb>=1.9",
+    "duckdb>=1.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gridiron"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["snowflake/dbt/target", "snowflake/dbt/dbt_packages"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "RUF", "PL", "C4"]
+ignore = [
+    "PLR0913", # data functions legitimately take several keyword arguments
+    "PLR2004", # football constants (4th down, 10 yards) read better inline
+    "N812",    # `functions as F` is the PySpark convention
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR2004", "S101"]
+"databricks/pipelines/**" = ["N802"]
+
+[tool.mypy]
+python_version = "3.12"
+files = [
+    "src",
+    "tests",
+    "databricks/jobs",
+]
+strict = true
+warn_unused_ignores = true
+explicit_package_bases = true
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+# Third-party libraries without type information.
+module = [
+    "sklearn.*",
+    "mlflow.*",
+    "pyspark.*",
+    "databricks.*",
+    "snowflake.*",
+    "streamlit.*",
+    "altair.*",
+    "duckdb.*",
+    "pyarrow.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Entry-point scripts that run on Databricks / Snowflake runtimes are type-checked
+# but untyped runtime objects (spark, dbutils, sessions) flow through them.
+module = ["databricks.*", "snowflake.*"]
+disallow_any_unimported = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = [
+    "ignore::DeprecationWarning:pyspark.*",
+]
