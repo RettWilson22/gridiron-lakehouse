@@ -77,8 +77,8 @@ def test_punt_opponent_yardline_handles_touchbacks_and_blocks() -> None:
             "outcome": ["punt", "punt", "punt_blocked"],
         }
     )
-    result = punt_opponent_yardline(punts)
-    assert result.tolist() == [80.0, 80.0]  # 60 - 45 + 5 = own 20 -> 80; touchback -> 80
+    result = [float(v) for v in punt_opponent_yardline(punts)]
+    assert result == [80.0, 80.0]  # 60 - 45 + 5 = own 20 -> 80; touchback -> 80
     curve = fit_punt_curve(punts.assign(decision="punt"))
     assert len(curve) == 99
 
