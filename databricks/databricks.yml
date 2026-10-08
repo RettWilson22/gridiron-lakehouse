@@ -7,8 +7,7 @@
 bundle:
   name: gridiron_lakehouse
 
-# Sync the shared Python package (one level up) next to this bundle so the job tasks and
-# the pipeline can install it with `pip install --editable`.
+# Sync the shared package source (one level up) so the workspace copy is browsable.
 sync:
   paths:
     - .
@@ -18,6 +17,14 @@ sync:
 
 include:
   - resources/*.yml
+
+# Build the shared package as a wheel on deploy; jobs and the pipeline install the wheel.
+# (Serverless compute can't do an editable install straight from workspace files.)
+artifacts:
+  gridiron:
+    type: whl
+    path: ..
+    build: python3 -m pip wheel --no-deps --wheel-dir dist .
 
 variables:
   catalog:
