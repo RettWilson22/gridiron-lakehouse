@@ -1,0 +1,55 @@
+# Databricks Asset Bundle for the gridiron lakehouse.
+# Free Edition compatible: serverless compute only, Unity Catalog, a single pipeline.
+#
+#   databricks bundle validate -t dev
+#   databricks bundle deploy   -t dev
+#   databricks bundle run      -t dev gridiron_refresh
+bundle:
+  name: gridiron_lakehouse
+
+# Sync the shared Python package (one level up) next to this bundle so the job tasks and
+# the pipeline can install it with `pip install --editable`.
+sync:
+  paths:
+    - .
+    - ../src
+    - ../pyproject.toml
+    - ../README.md
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog. Free Edition workspaces ship with `workspace`.
+    default: workspace
+  schema:
+    description: Schema for bronze, silver and gold datasets.
+    default: gridiron
+  serving_schema:
+    description: Schema holding the UniForm tables Snowflake reads.
+    default: gridiron_serving
+  first_season:
+    description: First season to ingest.
+    default: "2015"
+  last_train_season:
+    description: Last season used to train the model; later seasons are held out.
+    default: "2023"
+  test_seasons:
+    description: Completed held-out seasons used for evaluation (comma separated).
+    default: "2024,2025"
+
+targets:
+  # Development mode prefixes resource names, including the schemas, with
+  # `dev_<user>_`, pauses schedules and runs the pipeline in development mode.
+  dev:
+    mode: development
+    default: true
+
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    permissions:
+      - user_name: ${workspace.current_user.userName}
+        level: CAN_MANAGE

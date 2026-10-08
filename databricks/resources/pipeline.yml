@@ -1,0 +1,17 @@
+resources:
+  pipelines:
+    gridiron_pipeline:
+      name: gridiron-pipeline
+      catalog: ${var.catalog}
+      schema: ${resources.schemas.gridiron.name}
+      serverless: true
+      continuous: false
+      channel: CURRENT
+      libraries:
+        - file:
+            path: ../pipelines/gridiron_pipeline.py
+      environment:
+        dependencies:
+          - --editable ${workspace.file_path}
+      configuration:
+        gridiron.landing_path: /Volumes/${var.catalog}/${resources.schemas.gridiron.name}/${resources.volumes.landing.name}/pbp

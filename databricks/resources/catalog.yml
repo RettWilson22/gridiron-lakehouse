@@ -1,0 +1,18 @@
+resources:
+  schemas:
+    gridiron:
+      catalog_name: ${var.catalog}
+      name: ${var.schema}
+      comment: Bronze, silver and gold NFL play-by-play datasets.
+    gridiron_serving:
+      catalog_name: ${var.catalog}
+      name: ${var.serving_schema}
+      comment: UniForm (Iceberg-readable) copies of gold tables, read by Snowflake.
+
+  volumes:
+    landing:
+      catalog_name: ${var.catalog}
+      schema_name: ${resources.schemas.gridiron.name}
+      name: landing
+      volume_type: MANAGED
+      comment: Bronze landing zone for nflverse season files and exported model artifacts.

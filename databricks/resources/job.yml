@@ -1,0 +1,68 @@
+resources:
+  jobs:
+    gridiron_refresh:
+      name: gridiron-refresh
+      description: Ingest nflverse play-by-play, run the pipeline, train and score the model, publish UniForm tables.
+      # Tuesday 12:00 UTC, after Monday Night Football. Development mode pauses schedules.
+      schedule:
+        quartz_cron_expression: "0 0 12 ? * TUE"
+        timezone_id: UTC
+      max_concurrent_runs: 1
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "4"
+            dependencies:
+              - --editable ${workspace.file_path}
+              - mlflow>=3.1
+              - skops>=0.10
+      tasks:
+        - task_key: ingest
+          environment_key: default
+          spark_python_task:
+            python_file: ../jobs/ingest.py
+            parameters:
+              - --landing-dir
+              - /Volumes/${var.catalog}/${resources.schemas.gridiron.name}/${resources.volumes.landing.name}/pbp
+              - --first-season
+              - ${var.first_season}
+
+        - task_key: transform
+          depends_on:
+            - task_key: ingest
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.gridiron_pipeline.id}
+
+        - task_key: train_and_score
+          depends_on:
+            - task_key: transform
+          environment_key: default
+          spark_python_task:
+            python_file: ../jobs/train_and_score.py
+            parameters:
+              - --catalog
+              - ${var.catalog}
+              - --schema
+              - ${resources.schemas.gridiron.name}
+              - --experiment
+              - /Users/${workspace.current_user.userName}/gridiron-fourth-down
+              - --model-dir
+              - /Volumes/${var.catalog}/${resources.schemas.gridiron.name}/${resources.volumes.landing.name}/models
+              - --last-train-season
+              - ${var.last_train_season}
+              - --test-seasons
+              - ${var.test_seasons}
+
+        - task_key: publish_serving
+          depends_on:
+            - task_key: train_and_score
+          environment_key: default
+          spark_python_task:
+            python_file: ../jobs/publish_serving.py
+            parameters:
+              - --catalog
+              - ${var.catalog}
+              - --schema
+              - ${resources.schemas.gridiron.name}
+              - --serving-schema
+              - ${resources.schemas.gridiron_serving.name}

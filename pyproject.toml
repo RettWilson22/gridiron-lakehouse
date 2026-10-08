@@ -20,7 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 spark = ["pyspark>=4.0"]
-ml = ["mlflow-skinny>=2.16"]
+ml = ["mlflow-skinny>=3.1", "skops>=0.10"]
 sync = ["databricks-sql-connector>=3.4", "snowflake-connector-python[pandas]>=3.12"]
 app = ["streamlit>=1.38", "duckdb>=1.1", "altair>=5"]
 dev = [
@@ -54,12 +54,7 @@ ignore = [
 
 [tool.mypy]
 python_version = "3.12"
-files = [
-    "src",
-    "scripts",
-    "tests",
-    "databricks/jobs",
-]
+files = ["src", "scripts", "tests", "databricks/jobs", "databricks/pipelines"]
 strict = true
 warn_unused_ignores = true
 explicit_package_bases = true
@@ -81,10 +76,10 @@ module = [
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# Entry-point scripts that run on Databricks / Snowflake runtimes are type-checked
-# but untyped runtime objects (spark, dbutils, sessions) flow through them.
-module = ["databricks.*", "snowflake.*"]
-disallow_any_unimported = false
+# Expectation decorators (expect_all, expect_all_or_drop) exist only in the Databricks
+# runtime's pyspark.pipelines, not in the open-source package mypy sees locally.
+module = ["databricks.pipelines.*"]
+disable_error_code = ["attr-defined", "untyped-decorator"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
