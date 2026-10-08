@@ -12,6 +12,8 @@ import argparse
 import sys
 from pathlib import Path
 
+import pyarrow.parquet as pq
+
 from gridiron import quality, transforms
 from gridiron.local_spark import local_session
 
@@ -44,9 +46,13 @@ def main(argv: list[str] | None = None) -> int:
         "team_season_summary": transforms.team_season_summary(plays, decisions),
         "game_summary": transforms.game_summary(plays, decisions),
     }
+    args.out_dir.mkdir(parents=True, exist_ok=True)
     for name, frame in outputs.items():
-        frame.write.mode("overwrite").parquet(str(args.out_dir / name))
-        print(f"{name}: {spark.read.parquet(str(args.out_dir / name)).count()} rows")
+        # Single-file outputs keep the layout identical to the checked-in gold fixtures,
+        # so dbt and the Streamlit app can point at either directory.
+        table = frame.toArrow()
+        pq.write_table(table, args.out_dir / f"{name}.parquet")
+        print(f"{name}: {table.num_rows} rows")
 
     print(f"bronze rows: {raw.count()}, silver rows before drop rules: {silver_all.count()}")
     print("warn-rule failures:", warn_counts)

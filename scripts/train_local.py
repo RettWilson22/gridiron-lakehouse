@@ -31,8 +31,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    decisions = pd.read_parquet(args.lakehouse_dir / "fourth_down_decisions")
-    first_downs = pd.read_parquet(args.lakehouse_dir / "first_down_expected_points")
+    decisions = pd.read_parquet(args.lakehouse_dir / "fourth_down_decisions.parquet")
+    first_downs = pd.read_parquet(args.lakehouse_dir / "first_down_expected_points.parquet")
     result = train_decision_model(
         decisions, first_downs, args.last_train_season, tuple(args.test_seasons)
     )
