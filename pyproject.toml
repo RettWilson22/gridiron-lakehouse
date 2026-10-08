@@ -21,7 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 spark = ["pyspark>=4.0"]
 ml = ["mlflow-skinny>=3.1", "skops>=0.10"]
-sync = ["databricks-sql-connector>=3.4", "snowflake-connector-python[pandas]>=3.12"]
+sync = ["databricks-sql-connector>=3.4", "databricks-sdk>=0.40", "snowflake-connector-python[pandas]>=3.12"]
 app = ["streamlit>=1.38", "duckdb>=1.1", "altair>=5"]
 dev = [
     "pytest>=8",
