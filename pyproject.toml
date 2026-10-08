@@ -68,11 +68,12 @@ files = [
     "databricks/jobs",
     "databricks/pipelines",
     "snowflake/snowpark",
+    "snowflake/streamlit",
 ]
 strict = true
 warn_unused_ignores = true
 explicit_package_bases = true
-mypy_path = "src"
+mypy_path = "src:snowflake/streamlit"
 
 [[tool.mypy.overrides]]
 # Third-party libraries without type information.

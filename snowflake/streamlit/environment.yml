@@ -1,0 +1,7 @@
+# Packages for Streamlit in Snowflake (warehouse runtime, Snowflake Anaconda channel).
+name: sf_env
+channels:
+  - snowflake
+dependencies:
+  - altair
+  - pandas
