@@ -1,0 +1,48 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Local data (downloaded from nflverse; never committed)
+data/
+
+# Spark / MLflow local state
+spark-warehouse/
+metastore_db/
+derby.log
+mlruns/
+mlflow.db
+
+# Databricks
+.databricks/
+.databrickscfg
+
+# dbt
+snowflake/dbt/target/
+snowflake/dbt/dbt_packages/
+snowflake/dbt/logs/
+snowflake/dbt/*.duckdb
+snowflake/dbt/*.duckdb.wal
+snowflake/dbt/.user.yml
+logs/
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.p8
+secrets/
+snowflake/dbt/profiles.local.yml
+.streamlit/secrets.toml
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
