@@ -40,4 +40,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Databricks reports any SystemExit as a failed task, even exit code 0, so only exit
+    # explicitly on failure.
+    if (code := main()) != 0:
+        sys.exit(code)

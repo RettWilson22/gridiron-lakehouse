@@ -375,7 +375,7 @@ default is older. `SELECT SYSTEM$SUPPORTED_DBT_VERSIONS();` lists what is availa
 * **Free Edition outbound internet** is limited to trusted domains; whether GitHub release
   downloads are allowed is unconfirmed (workaround in step 4 above).
 * **Bundle details not validated against a workspace**: `sync.paths` reaching outside the
-  bundle folder to include `src/` and `pyproject.toml`, `--editable ${workspace.file_path}`
+  bundle folder to include `src/` and `pyproject.toml`, the wheel artifact built from `..`
   resolving to the synced repository root, the pipeline `environment.dependencies` block,
   and serverless `environment_version: "4"`.
 * **Pipeline API**: the pipeline uses `from pyspark import pipelines as dp` with
