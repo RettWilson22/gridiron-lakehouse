@@ -1,0 +1,16 @@
+# Profile used by dbt Projects on Snowflake (this file takes precedence over profiles.yml
+# when the project runs inside Snowflake). The project runs as the role below in the
+# caller's Snowflake session, so no credentials are stored; account and user are
+# placeholders that the Snowflake runtime does not use for authentication.
+gridiron:
+  target: prod
+  outputs:
+    prod:
+      type: snowflake
+      account: not_used_in_snowflake
+      user: not_used_in_snowflake
+      role: GRIDIRON_TRANSFORMER
+      warehouse: GRIDIRON_WH
+      database: GRIDIRON
+      schema: STAGING
+      threads: 4

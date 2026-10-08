@@ -1,0 +1,30 @@
+# Local and CI profiles. Run dbt from this directory with --profiles-dir .
+# No secrets live here: the Snowflake target reads everything from environment variables.
+# (dbt Projects on Snowflake uses dbt_projects_profiles.yml instead; see that file.)
+gridiron:
+  target: ci
+  outputs:
+    # Fixture data (three games) in DuckDB. Used by CI and the unit-test style dbt build.
+    ci:
+      type: duckdb
+      path: "{{ env_var('DBT_DUCKDB_PATH', 'ci.duckdb') }}"
+      threads: 4
+
+    # Full local lakehouse output in DuckDB, for the local Streamlit app:
+    #   dbt build --target local --vars '{gold_dir: ../../data/lakehouse}'
+    local:
+      type: duckdb
+      path: local.duckdb
+      threads: 4
+
+    # Snowflake from a laptop (key-pair auth), as the transformer role.
+    snowflake:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_DBT_USER', env_var('SNOWFLAKE_USER', '')) }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_FILE') }}"
+      role: GRIDIRON_TRANSFORMER
+      warehouse: GRIDIRON_WH
+      database: GRIDIRON
+      schema: STAGING
+      threads: 4

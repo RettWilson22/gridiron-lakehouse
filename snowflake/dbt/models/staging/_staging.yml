@@ -1,0 +1,71 @@
+version: 2
+
+models:
+  - name: stg_fourth_down_scored
+    description: One row per fourth-down decision with the model's valuation of each option.
+    columns:
+      - name: play_key
+        data_tests: [unique, not_null]
+      - name: game_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_game_summary')
+                field: game_id
+      - name: team
+        data_tests: [not_null]
+      - name: decision
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["go", "punt", "field_goal"]
+      - name: recommendation
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["go", "punt", "field_goal"]
+      - name: outcome
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["converted", "failed", "fg_made", "fg_missed", "fg_blocked", "punt", "punt_blocked"]
+      - name: p_convert
+        data_tests: [not_null]
+      - name: expected_points_lost
+        data_tests: [not_null]
+
+  - name: stg_team_season_summary
+    description: Regular-season team efficiency and fourth-down tendencies.
+    columns:
+      - name: team_season_key
+        data_tests: [unique, not_null]
+      - name: season
+        data_tests: [not_null]
+      - name: team
+        data_tests: [not_null]
+
+  - name: stg_game_summary
+    columns:
+      - name: game_id
+        data_tests: [unique, not_null]
+      - name: season_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["REG", "POST"]
+
+  - name: stg_coach_aggressiveness
+    columns:
+      - name: team_season_key
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_team_season_summary')
+                field: team_season_key
+      - name: aggressiveness_rank
+        data_tests: [not_null]
