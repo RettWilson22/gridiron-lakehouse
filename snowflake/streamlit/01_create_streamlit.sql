@@ -17,6 +17,9 @@ PUT file://snowflake/streamlit/environment.yml @APP.STREAMLIT_STAGE/fourth_down_
 CREATE OR REPLACE STREAMLIT APP.FOURTH_DOWN_EXPLORER
   FROM '@GRIDIRON.APP.STREAMLIT_STAGE/fourth_down_explorer'
   MAIN_FILE = 'streamlit_app.py'
+  -- Warehouse runtime (packages from environment.yml). New accounts otherwise default to the
+  -- container runtime, which needs a compute pool that trial accounts can't always start.
+  RUNTIME_NAME = 'SYSTEM$WAREHOUSE_RUNTIME'
   QUERY_WAREHOUSE = GRIDIRON_WH
   TITLE = 'Fourth Down Explorer'
   COMMENT = 'NFL fourth-down decisions vs. an expected-points model';
