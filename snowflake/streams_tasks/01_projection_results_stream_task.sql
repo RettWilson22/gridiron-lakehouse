@@ -3,14 +3,19 @@
 -- projection next to what actually happened) current as results land, without waiting for
 -- a dbt run, and exposes weekly accuracy as the view APP.WEEKLY_ACCURACY.
 --
--- Why a stream + task here:
+-- Why streams + a task here:
 --   * New results are a naturally incremental workload: each sync after a week's games
 --     MERGEs that week's player rows into SYNCED.PLAYER_WEEK, and stat corrections update a
 --     few rows. The sync only touches rows that changed, so a standard stream on the table
 --     captures exactly the affected weeks, and the task rebuilds only those weeks.
+--   * Projections change too: a backtest season is refitted when its data changes, and a
+--     result row is built from the projection as well. A second stream on
+--     SYNCED.PROJECTIONS adds those weeks. The sync does not count a new GENERATED_AT alone
+--     as a change, so a rerun that reproduces the same projections leaves it empty.
 --   * The task runs on GRIDIRON_WH, so the resource monitor covers it, and its WHEN clause
---     skips the run (no warehouse start) when the stream is empty.
---   * SHOW_INITIAL_ROWS makes the first run backfill every existing week.
+--     skips the run (no warehouse start) when both streams are empty.
+--   * SHOW_INITIAL_ROWS makes the first run backfill every existing week. Creating the
+--     projections stream on an existing deployment backfills every week once more.
 -- dbt's MARTS.MART_PROJECTION_SCORECARD holds the same record rebuilt in batch (and in
 -- DuckDB for CI and the public copy); this table is the in-Snowflake incremental version.
 
@@ -51,12 +56,18 @@ CREATE STREAM IF NOT EXISTS SYNCED.PLAYER_WEEK_CHANGES
   SHOW_INITIAL_ROWS = TRUE
   COMMENT = 'New and corrected results, consumed by APP.MAINTAIN_PROJECTION_RESULTS';
 
+CREATE STREAM IF NOT EXISTS SYNCED.PROJECTIONS_CHANGES
+  ON TABLE SYNCED.PROJECTIONS
+  SHOW_INITIAL_ROWS = TRUE
+  COMMENT = 'New and changed projections, consumed by APP.MAINTAIN_PROJECTION_RESULTS';
+
 CREATE OR REPLACE TASK APP.MAINTAIN_PROJECTION_RESULTS
   WAREHOUSE = GRIDIRON_WH
   -- Tuesday 14:00 UTC, after the Databricks job (12:00 UTC) and the sync.
   SCHEDULE = 'USING CRON 0 14 * * 2 UTC'
-  COMMENT = 'Rebuild projection results for weeks whose actual results changed'
+  COMMENT = 'Rebuild projection results for weeks whose results or projections changed'
   WHEN SYSTEM$STREAM_HAS_DATA('GRIDIRON.SYNCED.PLAYER_WEEK_CHANGES')
+    OR SYSTEM$STREAM_HAS_DATA('GRIDIRON.SYNCED.PROJECTIONS_CHANGES')
 AS
 EXECUTE IMMEDIATE $$
 BEGIN
@@ -64,10 +75,12 @@ BEGIN
 
   DELETE FROM APP.RESULTS_CHANGED_WEEKS;
 
-  -- Consuming the stream in a DML statement advances its offset when the transaction
+  -- Consuming the streams in a DML statement advances their offsets when the transaction
   -- commits. Both the before and after images of updated rows are included.
   INSERT INTO APP.RESULTS_CHANGED_WEEKS (SEASON, WEEK)
-  SELECT DISTINCT SEASON, WEEK FROM SYNCED.PLAYER_WEEK_CHANGES;
+  SELECT SEASON, WEEK FROM SYNCED.PLAYER_WEEK_CHANGES
+  UNION
+  SELECT SEASON, WEEK FROM SYNCED.PROJECTIONS_CHANGES;
 
   DELETE FROM APP.PROJECTION_RESULTS r
   USING APP.RESULTS_CHANGED_WEEKS c

@@ -8,7 +8,8 @@ serving table the script:
 1. reads the table from a Databricks SQL warehouse as Arrow;
 2. loads it into a temporary staging table shaped exactly like the target;
 3. MERGEs changed and new rows into ``SYNCED.<TABLE>`` and deletes rows that disappeared,
-   in one transaction, so the stream on ``SYNCED.PLAYER_WEEK`` only sees real changes.
+   in one transaction, so the streams on ``SYNCED.PLAYER_WEEK`` and ``SYNCED.PROJECTIONS``
+   only see real changes (a new ``generated_at`` alone is not a change).
 
 Configuration comes from environment variables (see ``.env.example``); nothing is
 hard-coded. Databricks auth uses ``DATABRICKS_TOKEN`` if set, otherwise a Databricks CLI
@@ -35,6 +36,9 @@ from gridiron.snowflake_sql import PRIMARY_KEYS, delete_missing_sql, merge_sql, 
 from gridiron.sync_config import SyncConfig
 
 log = logging.getLogger("sync_to_snowflake")
+# A column that moves on every Databricks run even when nothing else does. It is not a
+# change on its own, so the streams on SYNCED tables only see real changes.
+CHANGE_IGNORED = ("generated_at",)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -74,7 +78,13 @@ def main(argv: list[str] | None = None) -> int:
             keys = PRIMARY_KEYS[table]
             cur.execute("BEGIN")
             cur.execute(
-                merge_sql(target_name, f"{schema}.{stage_name}", list(arrow.column_names), keys)
+                merge_sql(
+                    target_name,
+                    f"{schema}.{stage_name}",
+                    list(arrow.column_names),
+                    keys,
+                    ignore=CHANGE_IGNORED,
+                )
             )
             merged = cur.rowcount
             cur.execute(delete_missing_sql(target_name, f"{schema}.{stage_name}", keys))

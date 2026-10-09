@@ -129,10 +129,10 @@ laptop, as do the dbt build and the public snapshot export.
 **Snowflake** (trial, one X-Small warehouse under a resource monitor). dbt builds the marts
 for the cheat sheet, risers, game logs and the accuracy record. `APP.FANTASY_POINTS` is a
 Python UDF that rescores a stat line under any league's scoring, using the same
-`scoring.py` as Databricks. A stream on `SYNCED.PLAYER_WEEK` and a task rebuild
-projected-vs-actual results only for weeks whose results changed. The Streamlit in
-Snowflake app has a cheat sheet, a player index, a start/sit comparison, risers and a track
-record; the public copy runs the same code against a Parquet snapshot of the marts. The
+`scoring.py` as Databricks. Streams on `SYNCED.PLAYER_WEEK` and `SYNCED.PROJECTIONS` and a
+task rebuild projected-vs-actual results only for weeks whose results or projections
+changed. The Streamlit in Snowflake app has a cheat sheet, a player index, a start/sit
+comparison, risers and a track record; the public copy runs the same code against a Parquet snapshot of the marts. The
 player index search ([`player_search.py`](src/gridiron/player_search.py)) handles partial
 and last-name-first queries, initials ("jsn"), nicknames ("cmc"), close spellings
 ("mccaffery") and team or position words ("lions wr"), and ranks ties by this week's

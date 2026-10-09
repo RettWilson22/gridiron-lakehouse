@@ -80,27 +80,37 @@ def iceberg_view_sql(
     )
 
 
-def merge_sql(target: str, staging: str, columns: list[str], keys: tuple[str, ...]) -> str:
+def merge_sql(
+    target: str,
+    staging: str,
+    columns: list[str],
+    keys: tuple[str, ...],
+    ignore: tuple[str, ...] = (),
+) -> str:
     """Upsert staging into target, touching only rows whose values actually changed.
 
-    Skipping unchanged rows keeps the stream on the target table free of no-op updates.
+    Skipping unchanged rows keeps the streams on the target tables free of no-op updates.
+    ``ignore`` names columns that do not count as a change on their own (``generated_at``
+    moves on every run even when the projection does not); they are still updated when
+    another column changed, and inserted with new rows.
     """
     cols = [sf_ident(c) for c in columns]
     key_cols = [sf_ident(k) for k in keys]
     missing = set(key_cols) - set(cols)
     if missing:
         raise ValueError(f"key columns not in table: {sorted(missing)}")
+    ignored = {sf_ident(c) for c in ignore}
     non_keys = [c for c in cols if c not in key_cols]
+    compared = [c for c in non_keys if c not in ignored]
     on = " AND ".join(f"t.{k} = s.{k}" for k in key_cols)
-    changed = " OR ".join(f"NOT EQUAL_NULL(t.{c}, s.{c})" for c in non_keys)
-    update = ", ".join(f"{c} = s.{c}" for c in non_keys)
     insert_cols = ", ".join(cols)
     insert_vals = ", ".join(f"s.{c}" for c in cols)
-    return (
-        f"MERGE INTO {target} t USING {staging} s ON {on}\n"
-        f"WHEN MATCHED AND ({changed}) THEN UPDATE SET {update}\n"
-        f"WHEN NOT MATCHED THEN INSERT ({insert_cols}) VALUES ({insert_vals})"
-    )
+    statement = f"MERGE INTO {target} t USING {staging} s ON {on}\n"
+    if compared:
+        changed = " OR ".join(f"NOT EQUAL_NULL(t.{c}, s.{c})" for c in compared)
+        update = ", ".join(f"{c} = s.{c}" for c in non_keys)
+        statement += f"WHEN MATCHED AND ({changed}) THEN UPDATE SET {update}\n"
+    return statement + f"WHEN NOT MATCHED THEN INSERT ({insert_cols}) VALUES ({insert_vals})"
 
 
 def delete_missing_sql(target: str, staging: str, keys: tuple[str, ...]) -> str:
