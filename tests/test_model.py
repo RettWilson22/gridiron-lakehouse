@@ -5,16 +5,19 @@ import pandas as pd
 import pytest
 from sklearn.ensemble import HistGradientBoostingRegressor
 
+from gridiron import model as model_module
 from gridiron.backtest import completed
 from gridiron.features import COMPONENTS
 from gridiron.model import (
     HGB_PARAMS,
     OUTPUT_COLUMNS,
     POSITION_COMPONENTS,
+    TARGET,
     Band,
     ProjectionModel,
     _fit_component,
     fingerprint,
+    out_of_fold,
 )
 from gridiron.workflow import Prepared
 
@@ -49,6 +52,33 @@ def test_fingerprint_follows_what_the_model_learns_from(
 
     monkeypatch.setitem(HGB_PARAMS, "max_iter", 201)
     assert fingerprint(history) != baseline
+    monkeypatch.undo()
+    monkeypatch.setattr(model_module, "BAND_FOLDS", model_module.BAND_FOLDS + 1)
+    assert fingerprint(history) != baseline
+
+
+def test_out_of_fold_projections_never_see_their_own_season(prepared: Prepared) -> None:
+    history = completed(prepared.frame)
+    rows = history[(history["season"] < 2026) & (history["position"] == "WR")]
+    first = rows["season"] == 2024
+    targets = [*POSITION_COMPONENTS["WR"], TARGET]
+    changed = rows.copy()
+    changed.loc[first, targets] = rows.loc[first, targets] + 3.0  # 2024 results only
+
+    before, after = out_of_fold(rows, "WR"), out_of_fold(changed, "WR")
+    assert before.notna().all()
+    pd.testing.assert_series_equal(after[first], before[first])  # fitted on 2025 only
+    assert not np.allclose(after[~first], before[~first])  # fitted on the changed 2024
+
+
+def test_bands_are_fit_on_out_of_fold_projections(prepared: Prepared) -> None:
+    history = completed(prepared.frame)
+    train = history[history["season"] < 2026]
+    model = ProjectionModel.fit(train)
+    for position in ("QB", "WR"):
+        rows = train[train["position"] == position]
+        expected = Band.fit(out_of_fold(rows, position), rows[TARGET].astype("float64"))
+        assert model.bands[position] == expected
 
 
 def test_prediction_columns_and_invariants(fitted: tuple[ProjectionModel, pd.DataFrame]) -> None:
