@@ -104,8 +104,8 @@ def pool_coverage(projected: pd.DataFrame, ecr: pd.DataFrame, seasons: Iterable[
 
 def pooled_scope(scopes: Iterable[str]) -> str:
     """The scope that pools every test season, e.g. ``"2023-2025"`` (seasons alone are
-    ``"2023"``): the longest scope name. The Streamlit app, which runs in Snowflake without
-    this package, applies the same rule."""
+    ``"2023"``): the longest scope name, or the only season when there is one. The Streamlit
+    app, which runs in Snowflake without this package, applies the same rule."""
     return max(scopes, key=lambda scope: (len(scope), scope))
 
 
@@ -169,12 +169,15 @@ def score_methods(pool: pd.DataFrame) -> list[dict[str, float | int | str]]:
 
 
 def evaluate(projected: pd.DataFrame, ecr: pd.DataFrame, seasons: Iterable[int]) -> pd.DataFrame:
-    """Backtest metrics per scope (each season, and all seasons together) and position."""
+    """Backtest metrics per scope (each season, and all seasons together when there are
+    several) and position."""
     seasons = sorted(set(seasons))
     scored = attach_ecr(projected[projected["season"].isin(seasons)], ecr)
     pool = evaluation_pool(scored)
     records = []
-    scopes = [(str(s), [s]) for s in seasons] + [(f"{seasons[0]}-{seasons[-1]}", seasons)]
+    scopes = [(str(s), [s]) for s in seasons]
+    if len(seasons) > 1:
+        scopes.append((f"{seasons[0]}-{seasons[-1]}", seasons))
     for scope, scope_seasons in scopes:
         coverage = pool_coverage(scored[scored["season"].isin(scope_seasons)], ecr, scope_seasons)
         for position, group in pool[pool["season"].isin(scope_seasons)].groupby("position"):

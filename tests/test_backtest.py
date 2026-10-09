@@ -117,3 +117,10 @@ def test_candidate_coverage_counts_player_games_in_the_pool() -> None:
     assert coverage["player_games"] == 4  # week 2 has no candidates and is not counted
     assert coverage["share_all"] == pytest.approx(0.5)
     assert coverage["share_10_plus_ppr"] == pytest.approx(0.5)
+
+
+def test_a_single_season_has_no_separate_pooled_scope() -> None:
+    projected, ecr = synthetic()
+    metrics = bt.evaluate(projected, ecr, [2024])
+    assert list(metrics["scope"].unique()) == ["2024"]  # not also "2024-2024"
+    assert bt.pooled_scope(metrics["scope"]) == "2024"
