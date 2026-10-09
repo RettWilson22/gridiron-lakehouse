@@ -124,6 +124,17 @@ def test_upcoming_week_is_the_first_unplayed_week() -> None:
     assert upcoming_week(games.assign(is_final=True)) is None
 
 
+def test_upcoming_week_ignores_unfinished_games_from_earlier_seasons() -> None:
+    # A game that never got a final score (cancelled, say) must not pin the upcoming
+    # week to a past season.
+    stray = pd.DataFrame({"season": [2024], "week": [17], "is_final": [False]})
+    games = pd.DataFrame(
+        {"season": [2026, 2026, 2026], "week": [4, 5, 5], "is_final": [True, True, False]}
+    )
+    assert upcoming_week(pd.concat([stray, games])) == (2026, 5)
+    assert upcoming_week(pd.concat([stray, games.assign(is_final=True)])) is None
+
+
 def test_risers_compare_the_last_three_games_with_earlier_ones() -> None:
     games = []
     for week, xfp in enumerate([4.0, 5.0, 4.0, 12.0, 13.0, 14.0], start=1):

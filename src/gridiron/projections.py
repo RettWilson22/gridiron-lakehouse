@@ -78,8 +78,13 @@ RISER_COLUMNS: Final[dict[str, str]] = {
 
 
 def upcoming_week(team_week: pd.DataFrame) -> tuple[int, int] | None:
-    """The next regular-season week with a game that has not been played, if any."""
-    pending = team_week[~team_week["is_final"].astype(bool)]
+    """The next regular-season week of the current season (the latest one in the schedule)
+    with a game that has not been played, if any. Unfinished games from earlier seasons
+    (a cancelled game never gets a final score) are ignored."""
+    if team_week.empty:
+        return None
+    current = team_week[team_week["season"] == team_week["season"].max()]
+    pending = current[~current["is_final"].astype(bool)]
     if pending.empty:
         return None
     first = pending.sort_values(["season", "week"]).iloc[0]
