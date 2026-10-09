@@ -40,10 +40,20 @@ Also confirmed in the cloud:
   ([details](deploy.md#the-iceberg-path-workspaces-with-external-storage)), so its SQL has
   not been run end to end.
 
-Changed since that deployment and not yet deployed: the years-of-experience feature fix
-(identical outputs locally, below), gradient-boosting early stopping switched off (new
-local numbers, below), the `GRIDIRON_DBT` service user in `02_database_and_roles.sql`, and
-small wording changes in the app.
+Changed since that deployment and not yet deployed, all checked locally (below):
+
+* Databricks: the years-of-experience feature fix (identical outputs), gradient-boosting
+  early stopping switched off (new numbers), refits skipped when the training data is
+  unchanged (fingerprinted model versions, a tagged champion), features for the upcoming
+  week only in the score task, typed empty risers, the upcoming week limited to the
+  current season, new silver expectations on names, teams and positions, and MLflow
+  bounded below 4.
+* Snowflake: the `GRIDIRON_DBT` service user and the `GRIDIRON_APP_OWNER` role in
+  `02_database_and_roles.sql` (the app is now created as that role; the reader loses
+  `STAGING`, the loader gets `CREATE STAGE`), a second stream on `SYNCED.PROJECTIONS`
+  for the results task, and a sync that ignores `generated_at` on its own.
+* The app: one cached sheet per week, league scoring in a form, escaped third-party
+  text, capped search input, and small wording changes.
 
 ## Local: a laptop against the real data
 
@@ -74,12 +84,22 @@ Apple Silicon, Python 3.12, Java 21, on 2026-10-08 and 2026-10-09, with the comm
   on (WRs in every test season, RBs in 2024 and 2025, TEs in 2025); QB numbers are
   identical. That run (after Thursday's kickoff) kept the 33 projections for Thursday's
   game as published and refreshed the other 539 live projections with the new model.
-* **Job smoke test** (`make smoke-jobs`): the real `train`, `score` (twice) and
-  `publish_serving` (twice) entry points against a local Spark catalog, with MLflow logging
-  and loading the pyfunc model from a local store (registration skipped).
+* **Skipping refits** (2026-10-09): `make model-local` took 86 seconds with no stored
+  backtest table and 19 to 21 seconds on reruns that reused all four backtest seasons,
+  with identical metrics.
+* **Job smoke test** (`make smoke-jobs`): the real `train` (twice), `score` (twice) and
+  `publish_serving` (twice) entry points against a local Spark catalog, with a throwaway
+  MLflow file store as tracking store and model registry. The first `train` registered v1
+  as champion with its training fingerprint; the second reused both backtest seasons,
+  found the champion trained on the same data and registered nothing. `score` loaded the
+  champion through the registry, as in production. 79 seconds in all.
+* **New silver expectations** (names, teams, positions), run over the local silver
+  tables: the only rows flagged were the 88 box scores and 1 player row of "Kenneth
+  Murray, Jr." (a comma in the name).
 * **dbt**: `dbt build --target ci` passes 54 nodes on the fixtures; `make dbt-local` passes 55
   over the full local data, including the SQL-vs-Python reconciliation test.
-* **Checks**: `make check` (ruff, mypy strict, generated-SQL check, dbt CI build, 152 pytest
+* **Checks**: `make check` (ruff, mypy strict, generated-SQL check, dbt CI build, 211 pytest
   tests) passes; CI runs the same steps on every push to main and every pull request.
-* **App**: the Streamlit app's headless tests (`tests/test_streamlit_app.py`) cover the
-  local DuckDB mode and the public snapshot mode.
+* **App**: the Streamlit app's 13 headless tests (`tests/test_streamlit_app.py`) cover the
+  local DuckDB mode and the public snapshot mode, including the league scoring form, the
+  number of queries a scoring change runs and a hostile player name rendered as text.
