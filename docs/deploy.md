@@ -128,7 +128,8 @@ make sync                                         # reads .env
 Databricks SQL warehouse as Arrow, authenticating with the Databricks CLI login unless
 `DATABRICKS_TOKEN` is set. It loads the rows into a temporary staging table and MERGEs them
 into `GRIDIRON.SYNCED`, touching only rows that changed and deleting rows that disappeared,
-so the stream on `SYNCED.PLAYER_WEEK` sees real changes only.
+so the streams on `SYNCED.PLAYER_WEEK` and `SYNCED.PROJECTIONS` see real changes only. A
+new `generated_at` on its own does not count as a change.
 
 ### 3.4 Scoring UDF, dbt, stream and task, app
 
@@ -143,10 +144,11 @@ snow sql -f snowflake/streamlit/01_create_streamlit.sql
 ```
 
 * dbt runs as `GRIDIRON_TRANSFORMER` and reads `SYNCED` (`gold_source: synced`).
-* The stream and task script creates `APP.PROJECTION_RESULTS`, the stream on
-  `SYNCED.PLAYER_WEEK` (with initial rows, so the first run backfills every week) and the
-  task `APP.MAINTAIN_PROJECTION_RESULTS` (Tuesdays 14:00 UTC, skipped when the stream is
-  empty). To run it now, use the `EXECUTE TASK` line commented at the end of the script.
+* The stream and task script creates `APP.PROJECTION_RESULTS`, streams on
+  `SYNCED.PLAYER_WEEK` and `SYNCED.PROJECTIONS` (with initial rows, so the first run
+  backfills every week) and the task `APP.MAINTAIN_PROJECTION_RESULTS` (Tuesdays 14:00 UTC,
+  skipped when both streams are empty), which rebuilds every week that either stream
+  touched. To run it now, use the `EXECUTE TASK` line commented at the end of the script.
 * The app is created on the warehouse runtime (`RUNTIME_NAME = 'SYSTEM$WAREHOUSE_RUNTIME'`),
   because trial accounts cannot always start the compute pool the container runtime needs.
   `snowflake/streamlit/environment.yml` pins Streamlit 1.52.2, the newest in the Snowflake

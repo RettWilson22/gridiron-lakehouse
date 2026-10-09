@@ -66,3 +66,16 @@ def test_sql_pool_sizes_match_the_python_pool() -> None:
     assert decode, "DECODE(POSITION, ...) not found in the stream task SQL"
     pairs = re.findall(r"'(\w+)', (\d+)", decode.group(1))
     assert {position: int(size) for position, size in pairs} == POOL
+
+
+def test_every_results_stream_wakes_the_task_and_feeds_the_changed_weeks() -> None:
+    sql = (SNOWFLAKE / "streams_tasks" / "01_projection_results_stream_task.sql").read_text()
+    streams = re.findall(r"CREATE STREAM IF NOT EXISTS (SYNCED\.\w+)\s+ON TABLE (SYNCED\.\w+)", sql)
+    assert {table for _, table in streams} == {"SYNCED.PLAYER_WEEK", "SYNCED.PROJECTIONS"}
+    when = re.search(r"\bWHEN (.*?)\nAS\n", sql, flags=re.DOTALL)
+    assert when, "task WHEN clause not found"
+    changed = re.search(r"INSERT INTO APP\.RESULTS_CHANGED_WEEKS.*?;", sql, flags=re.DOTALL)
+    assert changed, "changed-weeks INSERT not found"
+    for stream, _ in streams:
+        assert f"SYSTEM$STREAM_HAS_DATA('GRIDIRON.{stream}')" in when.group(1), stream
+        assert f"FROM {stream}" in changed.group(0), stream

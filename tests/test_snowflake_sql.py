@@ -88,6 +88,27 @@ def test_merge_only_updates_changed_rows() -> None:
     assert "INSERT (SEASON, TEAM, PROJ_PPR) VALUES (s.SEASON, s.TEAM, s.PROJ_PPR)" in sql
 
 
+def test_merge_ignores_columns_that_alone_do_not_make_a_change() -> None:
+    sql = merge_sql(
+        "SYNCED.T",
+        "SYNCED.T__STAGE",
+        ["season", "proj_ppr", "generated_at"],
+        ("season",),
+        ignore=("generated_at",),
+    )
+    assert "WHEN MATCHED AND (NOT EQUAL_NULL(t.PROJ_PPR, s.PROJ_PPR)) THEN" in sql
+    assert "GENERATED_AT, s.GENERATED_AT" not in sql
+    # Still copied along when another column changed, and on insert.
+    assert "UPDATE SET PROJ_PPR = s.PROJ_PPR, GENERATED_AT = s.GENERATED_AT" in sql
+    assert "INSERT (SEASON, PROJ_PPR, GENERATED_AT)" in sql
+
+
+def test_merge_with_nothing_left_to_compare_only_inserts() -> None:
+    sql = merge_sql("T", "S", ["season", "generated_at"], ("season",), ignore=("generated_at",))
+    assert "WHEN MATCHED" not in sql
+    assert "WHEN NOT MATCHED THEN INSERT (SEASON, GENERATED_AT)" in sql
+
+
 def test_merge_rejects_unknown_keys() -> None:
     with pytest.raises(ValueError, match="key columns"):
         merge_sql("T", "S", ["a"], ("b",))
