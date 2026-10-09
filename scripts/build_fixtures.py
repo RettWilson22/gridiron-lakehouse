@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import shutil
 import sys
 from pathlib import Path
@@ -47,6 +48,40 @@ def write(frame: pd.DataFrame, source: Path, out_root: Path, landing_root: Path)
     schema = pq.read_schema(source)
     table = pa.Table.from_pandas(frame, preserve_index=False)
     pq.write_table(table.cast(pa.schema([schema.field(c) for c in table.column_names])), target)
+
+
+def _scramble(key: object) -> int:
+    """A stable pseudo-random number per player, used to order made-up ranks."""
+    return int(hashlib.sha256(str(key).encode()).hexdigest()[:8], 16)
+
+
+def synthetic_ecr(ecr: pd.DataFrame) -> pd.DataFrame:
+    """Replace FantasyPros' expert ranks with made-up ones in the same layout.
+
+    The rankings are FantasyPros content, so none of their values are checked in; the tests
+    only need the shape (one row per player, page and scrape date) and plausible numbers.
+    """
+    ecr = ecr.copy()
+    order = ecr["id"].map(_scramble)
+    rank = order.groupby([ecr["fp_page"], ecr["scrape_date"]]).rank(method="first")
+    ecr["ecr"] = rank.map(lambda r: f"{r:.2f}")
+    ecr["sd"] = "2.00"
+    ecr["best"] = rank.map(lambda r: str(max(1, int(r) - 2)))
+    ecr["worst"] = rank.map(lambda r: str(int(r) + 2))
+    return ecr
+
+
+def synthetic_ecr_ranks(projections: pa.Table) -> pa.Table:
+    """Made-up ``ecr_rank`` values (see ``synthetic_ecr``) for the gold projections fixture."""
+    frame = projections.select(["season", "week", "position", "player_id", "ecr_rank"])
+    df = frame.to_pandas()
+    ranked = df["ecr_rank"].notna()
+    order = df.loc[ranked, "player_id"].map(_scramble)
+    keys = [df.loc[ranked, c] for c in ("season", "week", "position")]
+    new = pd.array([None] * len(df), dtype="Int64")
+    new[ranked.to_numpy()] = order.groupby(keys).rank(method="first").astype("int64").to_numpy()
+    column = pa.array(new, type=projections.schema.field("ecr_rank").type)
+    return projections.set_column(projections.column_names.index("ecr_rank"), "ecr_rank", column)
 
 
 def fixture_games(landing_root: Path) -> pd.DataFrame:
@@ -146,7 +181,8 @@ def build_landing(landing_root: Path, out_root: Path) -> None:
         first = dt.date.fromisoformat(season_games["gameday"].min()) - dt.timedelta(days=7)
         last = dt.date.fromisoformat(season_games["gameday"].max())
         dates = pd.to_datetime(ecr["scrape_date"]).dt.date
-        write(ecr[(dates >= first) & (dates <= last)], latest_file(folder), out_root, landing_root)
+        ecr = synthetic_ecr(ecr[(dates >= first) & (dates <= last)])
+        write(ecr, latest_file(folder), out_root, landing_root)
 
 
 def build_gold(lakehouse_dir: Path, landing_root: Path, out_dir: Path) -> None:
@@ -158,7 +194,9 @@ def build_gold(lakehouse_dir: Path, landing_root: Path, out_dir: Path) -> None:
         table = pq.read_table(lakehouse_dir / f"{name}.parquet")
         if "game_id" in table.column_names:
             table = table.filter(pc.is_in(table["game_id"], pa.array(sorted(game_ids))))
-        elif name == "risers":
+        if "ecr_rank" in table.column_names:
+            table = synthetic_ecr_ranks(table)
+        if name == "risers" and "game_id" not in table.column_names:
             table = table.filter(pc.is_in(table["team"], pa.array(TEAMS)))
         pq.write_table(table.replace_schema_metadata(None), out_dir / f"{name}.parquet")
 
