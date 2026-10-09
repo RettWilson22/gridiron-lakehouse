@@ -2,16 +2,18 @@
 -- Run as ACCOUNTADMIN (or split between SYSADMIN for objects and SECURITYADMIN for grants).
 --
 -- Schemas
---   ICEBERG_RAW  Iceberg tables read from Databricks Unity Catalog (primary path)
+--   SYNCED       native tables loaded by scripts/sync_to_snowflake.py (the working path
+--                with Databricks Free Edition)
+--   ICEBERG_RAW  Iceberg tables read through Unity Catalog (needs external storage)
 --   ICEBERG      upper-case views over ICEBERG_RAW
---   SYNCED       native tables loaded by scripts/sync_to_snowflake.py (fallback path)
 --   STAGING      dbt staging views
 --   MARTS        dbt marts
---   APP          UDF, model stage, weekly summary, stream/task, Streamlit app
+--   APP          FANTASY_POINTS UDF and its code stage, projection results maintained by a
+--                stream and task, Streamlit app
 --
 -- Roles (least privilege; each role gets only what its workload needs)
 --   GRIDIRON_ADMIN        owns the database and runs the setup scripts
---   GRIDIRON_LOADER       fallback sync: writes SYNCED only
+--   GRIDIRON_LOADER       sync: writes SYNCED only
 --   GRIDIRON_TRANSFORMER  dbt: reads ICEBERG / SYNCED, builds STAGING and MARTS
 --   GRIDIRON_READER       Streamlit and analysts: reads MARTS and APP, calls the UDF
 
@@ -31,7 +33,8 @@ GRANT ROLE GRIDIRON_ADMIN TO ROLE SYSADMIN;
 SET me = CURRENT_USER();
 GRANT ROLE GRIDIRON_ADMIN TO USER IDENTIFIER($me);
 
-CREATE DATABASE IF NOT EXISTS GRIDIRON COMMENT = 'NFL fourth-down analytics';
+CREATE DATABASE IF NOT EXISTS GRIDIRON COMMENT = 'Fantasy football projections and cheat sheet';
+ALTER DATABASE GRIDIRON SET COMMENT = 'Fantasy football projections and cheat sheet';
 GRANT OWNERSHIP ON DATABASE GRIDIRON TO ROLE GRIDIRON_ADMIN COPY CURRENT GRANTS;
 
 USE ROLE GRIDIRON_ADMIN;
@@ -79,6 +82,7 @@ GRANT USAGE ON SCHEMA GRIDIRON.STAGING TO ROLE GRIDIRON_READER;
 GRANT SELECT ON FUTURE VIEWS IN SCHEMA GRIDIRON.STAGING TO ROLE GRIDIRON_READER;
 GRANT USAGE ON SCHEMA GRIDIRON.APP TO ROLE GRIDIRON_READER;
 GRANT SELECT ON FUTURE TABLES IN SCHEMA GRIDIRON.APP TO ROLE GRIDIRON_READER;
+GRANT SELECT ON FUTURE VIEWS IN SCHEMA GRIDIRON.APP TO ROLE GRIDIRON_READER;
 GRANT USAGE ON FUTURE FUNCTIONS IN SCHEMA GRIDIRON.APP TO ROLE GRIDIRON_READER;
 
 -- Service user for the fallback sync, using key-pair authentication.
@@ -87,6 +91,6 @@ CREATE USER IF NOT EXISTS GRIDIRON_SYNC
   TYPE = SERVICE
   DEFAULT_ROLE = GRIDIRON_LOADER
   DEFAULT_WAREHOUSE = GRIDIRON_WH
-  COMMENT = 'Databricks -> Snowflake fallback sync';
+  COMMENT = 'Databricks -> Snowflake sync of the serving tables';
 -- ALTER USER GRIDIRON_SYNC SET RSA_PUBLIC_KEY = '<PUBLIC_KEY_BODY>';
 GRANT ROLE GRIDIRON_LOADER TO USER GRIDIRON_SYNC;

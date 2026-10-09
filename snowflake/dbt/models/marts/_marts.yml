@@ -1,0 +1,59 @@
+version: 2
+
+models:
+  - name: mart_cheat_sheet
+    description: >
+      Current-season projections by week and position: tier, rank, projection, floor and
+      ceiling in PPR, half PPR and standard; matchup; injury status; projected stat line
+      (for custom scoring); actual points once the game is final.
+    columns:
+      - name: projection_key
+        data_tests: [unique, not_null]
+      - name: is_upcoming
+        data_tests: [not_null]
+      - name: matchup
+        data_tests: [not_null]
+      - name: pos_rank_ppr
+        data_tests: [not_null]
+      - name: start_sit_ppr
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Start", "Flex", "Sit"]
+
+  - name: mart_risers
+    description: Usage trends (last three games against earlier ones) for the current season.
+    columns:
+      - name: riser_key
+        data_tests: [unique, not_null]
+      - name: is_riser
+        data_tests: [not_null]
+
+  - name: mart_projection_scorecard
+    description: >
+      Projected vs actual per season, week, position and method over the backtest's
+      evaluation pool. Aggregate with the stored sums, not by averaging weekly MAEs.
+    columns:
+      - name: scorecard_key
+        data_tests: [unique, not_null]
+      - name: method
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["model", "last3", "season_avg", "ecr"]
+      - name: n
+        data_tests: [not_null]
+
+  - name: mart_player_game_log
+    description: Current and previous season game logs with the projection published for each.
+    columns:
+      - name: player_week_key
+        data_tests: [unique, not_null]
+
+  - name: mart_backtest_summary
+    description: Walk-forward accuracy per scope (season or all seasons), position and method.
+    columns:
+      - name: metric_key
+        data_tests: [unique, not_null]
+      - name: method_label
+        data_tests: [not_null]

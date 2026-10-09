@@ -1,19 +1,21 @@
-"""Fallback sync: copy the Databricks serving tables into native Snowflake tables.
+"""Sync: copy the Databricks serving tables into native Snowflake tables (SYNCED).
 
-Use this when Snowflake cannot read the UniForm tables through the Unity Catalog Iceberg
-REST catalog (for example if external data access is unavailable on the workspace). For
-each table it:
+This is the production path with Databricks Free Edition: its Unity Catalog Iceberg REST
+endpoint returns table metadata but no storage credentials for tables on Databricks default
+storage, so Snowflake cannot read the files in place (details in the README). For each
+serving table the script:
 
 1. reads the table from a Databricks SQL warehouse as Arrow;
 2. loads it into a temporary staging table shaped exactly like the target;
 3. MERGEs changed and new rows into ``SYNCED.<TABLE>`` and deletes rows that disappeared,
-   in one transaction, so the stream on the target only sees real changes.
+   in one transaction, so the stream on ``SYNCED.PLAYER_WEEK`` only sees real changes.
 
 Configuration comes from environment variables (see ``.env.example``); nothing is
-hard-coded. Run ``snowflake/sync/01_synced_tables.sql`` once before the first sync.
+hard-coded. Databricks auth uses ``DATABRICKS_TOKEN`` if set, otherwise a Databricks CLI
+profile. Run ``snowflake/sync/01_synced_tables.sql`` once before the first sync.
 
-    python scripts/sync_to_snowflake.py                      # all serving tables
-    python scripts/sync_to_snowflake.py --tables game_summary
+    python scripts/sync_to_snowflake.py                       # all serving tables
+    python scripts/sync_to_snowflake.py --tables projections
 """
 
 from __future__ import annotations
