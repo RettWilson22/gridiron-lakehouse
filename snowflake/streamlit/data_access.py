@@ -27,6 +27,7 @@ REPO = HERE.parent.parent
 DBT_DIR = REPO / "snowflake" / "dbt"
 SNAPSHOT_DIR = REPO / "streamlit_public" / "snapshot"
 
+# The marts the app reads. scripts/export_public_snapshot.py exports the same list.
 MARTS: Final = (
     "mart_cheat_sheet",
     "mart_risers",
@@ -134,7 +135,6 @@ class DuckDBSource:
         import duckdb  # noqa: PLC0415 - not available in Streamlit in Snowflake
 
         self._con = duckdb.connect(str(path) if path else ":memory:", read_only=bool(path))
-        self.path = path
 
     def query(self, sql: str, params: list[Any] | None = None) -> pd.DataFrame:
         return _lower(self._con.execute(sql, params or []).df())
@@ -169,7 +169,6 @@ class SnapshotSource(DuckDBSource):
         for mart in MARTS:
             path = (directory / f"{mart}.parquet").as_posix()
             self._con.execute(f"create view marts.{mart} as select * from read_parquet('{path}')")
-        self.directory = directory
 
 
 def local_database() -> Path | None:

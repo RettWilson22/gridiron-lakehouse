@@ -35,7 +35,7 @@ def test_the_committed_snapshot_has_no_expert_ranks() -> None:
 def test_the_committed_snapshot_only_has_allowed_columns() -> None:
     exporter = load_exporter()
     files = {path.stem: path for path in SNAPSHOT.glob("*.parquet")}
-    assert set(files) == set(exporter.EXPORTED_COLUMNS)
+    assert set(files) == set(exporter.EXPORTED_COLUMNS) == set(exporter.MARTS)
     for mart, path in files.items():
         assert pq.read_schema(path).names == list(exporter.EXPORTED_COLUMNS[mart]), mart
 
