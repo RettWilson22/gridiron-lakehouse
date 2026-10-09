@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 
 from gridiron.config import POSITIONS
+from gridiron.scoring import STATS
 
 TIME = "t"
 KEY = ["season", "week", "player_id"]
@@ -59,20 +60,11 @@ TEAM_EWM_HALFLIFE_GAMES: Final = 4.0
 TEAM_STATS: Final = ("points_for", "offensive_plays", "pass_rate", "red_zone_plays")
 DEFENSE_WINDOW_GAMES: Final = 6
 
-# Stat-line components the model projects; fantasy points under any scoring are computed
-# from them (see ``gridiron.scoring``). Names match ``player_week`` columns.
-COMPONENTS: Final = (
-    "passing_yards",
-    "passing_tds",
-    "passing_interceptions",
-    "rushing_yards",
-    "rushing_tds",
-    "receptions",
-    "receiving_yards",
-    "receiving_tds",
-    "fumbles_lost",
-    "two_point_conversions",
-)
+# Stat-line components the model projects: every stat ``gridiron.scoring`` scores except
+# special teams touchdowns, which are too rare to project. Fantasy points under any scoring
+# are computed from them. Names match ``player_week`` columns.
+NOT_PROJECTED: Final = ("special_teams_tds",)
+COMPONENTS: Final = tuple(stat for stat in STATS if stat not in NOT_PROJECTED)
 
 INJURY_LEVELS: Final = {"Questionable": 1, "Doubtful": 2, "Out": 3}
 ROSTER_POSITIONS: Final = {"QB": "QB", "RB": "RB", "FB": "RB", "WR": "WR", "TE": "TE"}

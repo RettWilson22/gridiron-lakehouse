@@ -33,7 +33,7 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 
 from gridiron.config import POSITIONS
 from gridiron.features import COMPONENTS, FEATURES
-from gridiron.scoring import PRESETS
+from gridiron.scoring import PRESETS, UNIT_VALUES
 
 SKILL_COMPONENTS: Final = (
     "rushing_yards",
@@ -131,20 +131,8 @@ class Band:
 def points(frame: pd.DataFrame, preset: str, prefix: str = "") -> pd.Series:
     """Vectorized fantasy points from stat columns (no bonuses; see ``gridiron.scoring``)."""
     settings = PRESETS[preset]
-    units = {
-        "passing_yards": "pass_yd",
-        "passing_tds": "pass_td",
-        "passing_interceptions": "pass_int",
-        "rushing_yards": "rush_yd",
-        "rushing_tds": "rush_td",
-        "receptions": "rec",
-        "receiving_yards": "rec_yd",
-        "receiving_tds": "rec_td",
-        "fumbles_lost": "fumble_lost",
-        "two_point_conversions": "two_pt",
-    }
     total = pd.Series(0.0, index=frame.index)
-    for stat, key in units.items():
+    for stat, key in UNIT_VALUES:
         column = f"{prefix}{stat}"
         if column in frame:
             total = total + frame[column].fillna(0).astype("float64") * settings[key]

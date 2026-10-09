@@ -1,13 +1,45 @@
 from __future__ import annotations
 
+import importlib.util
+from types import ModuleType
 from typing import Any
 
 import pandas as pd
 import pytest
 
 from gridiron import scoring
+from gridiron.features import COMPONENTS
 from gridiron.model import points
-from tests.conftest import LANDING
+from tests.conftest import LANDING, REPO_ROOT
+
+
+def load_data_access() -> ModuleType:
+    """The app's data module, which is uploaded to Snowflake without the package."""
+    path = REPO_ROOT / "snowflake" / "streamlit" / "data_access.py"
+    spec = importlib.util.spec_from_file_location("data_access_under_test", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_scoring_is_the_one_list_of_stat_lines() -> None:
+    assert tuple(stat for stat, _ in scoring.UNIT_VALUES) == scoring.STATS
+    assert set(dict(scoring.UNIT_VALUES).values()) <= set(scoring.SETTINGS)
+    # The model projects every scored stat except special teams touchdowns.
+    assert tuple(s for s in scoring.STATS if s != "special_teams_tds") == COMPONENTS
+
+
+def test_app_stat_lists_match_the_package() -> None:
+    data_access = load_data_access()
+    assert data_access.PROJECTED_STATS == COMPONENTS
+    assert data_access.ACTUAL_STATS == scoring.STATS
+
+
+def test_vectorized_points_score_every_stat_line_column() -> None:
+    line = pd.DataFrame({stat: [1.0] for stat in scoring.STATS})
+    expected = scoring.fantasy_points(dict.fromkeys(scoring.STATS, 1.0), "ppr")
+    assert points(line, "ppr").iloc[0] == pytest.approx(expected)
 
 
 def records(frame: pd.DataFrame) -> list[dict[str, Any]]:
