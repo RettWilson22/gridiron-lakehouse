@@ -52,3 +52,19 @@ def test_model_tables_match_the_contract(prepared: Prepared) -> None:
         "backtest_metrics": metrics,
     }.items():
         compatible(arrow_table(frame).schema, fixture_schema(name))
+
+
+def test_offseason_tables_keep_the_contract(prepared: Prepared) -> None:
+    """With no upcoming week there are no risers, but the table keeps its columns and
+    types: a changed schema makes publish_serving replace the serving table (losing its
+    Iceberg identity) and an untyped empty Parquet file breaks the DuckDB dbt build."""
+    offseason = Prepared(prepared.frame, None, prepared.tables)
+    backtest, _ = run_backtest(offseason, [2025], NOW)
+    projections, risers = publish(offseason, backtest, None)
+    assert risers.empty
+    compatible(arrow_table(projections).schema, fixture_schema("projections"))
+    written = pa.Table.from_pandas(risers, preserve_index=False).schema  # as to_parquet sees it
+    expected = fixture_schema("risers")
+    assert written.names == expected.names
+    for field in written:
+        assert field.type == expected.field(field.name).type, field.name

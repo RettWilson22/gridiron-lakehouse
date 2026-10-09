@@ -57,6 +57,24 @@ RISER_MIN_EARLIER_GAMES: Final = 2
 RISER_MIN_XFP_GAIN: Final = 2.5
 RISER_MIN_RECENT_XFP: Final = 5.0
 USAGE: Final = ("snap_share", "target_share", "carry_share", "red_zone_share", "expected_ppr")
+# The risers table layout. It is the same with or without rows (no upcoming week in the
+# offseason), so the serving table and its Parquet files keep one schema.
+RISER_COLUMNS: Final[dict[str, str]] = {
+    "season": "int64",
+    "week": "int64",
+    "player_id": "string",
+    "player_name": "string",
+    "position": "string",
+    "team": "string",
+    "games_recent": "int64",
+    "games_earlier": "int64",
+    "baseline_basis": "string",
+    **{
+        f"{metric}_{part}": "float64" for metric in USAGE for part in ("recent", "before", "change")
+    },
+    "is_riser": "bool",
+    "riser_rank": "int64",
+}
 
 
 def upcoming_week(team_week: pd.DataFrame) -> tuple[int, int] | None:
@@ -193,11 +211,16 @@ def risers(player_week: pd.DataFrame, weeks: list[tuple[int, int]]) -> pd.DataFr
             )
             records.append(record)
     if not records:
-        return pd.DataFrame(columns=["season", "week", "player_id", "is_riser"])
+        return empty_risers()
     out = pd.DataFrame.from_records(records)
     out["riser_rank"] = (
         out.groupby(["season", "week"])["expected_ppr_change"]
         .rank(ascending=False, method="first", na_option="bottom")
         .astype("int64")
     )
-    return out.sort_values(["season", "week", "riser_rank"]).reset_index(drop=True)
+    out = out.sort_values(["season", "week", "riser_rank"]).reset_index(drop=True)
+    return out[list(RISER_COLUMNS)].astype(RISER_COLUMNS)
+
+
+def empty_risers() -> pd.DataFrame:
+    return pd.DataFrame({name: pd.Series(dtype=dtype) for name, dtype in RISER_COLUMNS.items()})
