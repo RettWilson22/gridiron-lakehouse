@@ -6,9 +6,13 @@ in any scoring format are the scoring rules applied to the projected stat line; 
 scoring is linear in the stats, that is the expected score (yardage bonuses aside).
 
 Floor and ceiling are the 10th and 90th percentile of actual PPR points among training
-player-weeks with a similar projection: training rows are split into 20 equal-count bins
-of projected points per position, and the percentiles are interpolated between bin
-medians (made non-decreasing in the projection).
+player-weeks with a similar out-of-fold projection: the training seasons are split into
+``BAND_FOLDS`` groups, each group is projected by component models fitted on the other
+groups, those projections are split into 20 equal-count bins per position, and the
+percentiles are interpolated between bin medians (made non-decreasing in the projection).
+A model's projections of its own training rows miss by less than its projections of new
+data, so bands fitted on them understate the spread; out-of-fold projections are of
+seasons the models did not train on.
 
 Design choices were made in exploratory runs on the 2022 season (trained on 2018-2021)
 before any 2023-2025 test season was scored. Those runs are not part of the repository;
@@ -32,6 +36,7 @@ import pandas as pd
 import sklearn
 from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.model_selection import GroupKFold
 
 import gridiron
 from gridiron.config import POSITIONS
@@ -73,6 +78,11 @@ COUNT_COMPONENTS: Final = frozenset(
 )
 BAND_BINS: Final = 20
 BAND_QUANTILES: Final = (0.1, 0.9)
+# Folds (groups of whole seasons) for the out-of-fold projections the bands are fitted on.
+# Chosen on the 2022 design season, not the test seasons: three folds covered within half a
+# point of one season per fold at every position, with fewer extra fits; two folds covered
+# more for QBs and TEs.
+BAND_FOLDS: Final = 3
 # Early stopping is off on purpose. scikit-learn's default ("auto") turns it on above 10,000
 # training rows and then holds out a random 10% of them, so it would be on for some
 # positions and backtest seasons and off for others, and the backtest would not test the
@@ -125,6 +135,7 @@ def fingerprint(*frames: pd.DataFrame) -> str:
         sorted(COUNT_COMPONENTS),
         BAND_BINS,
         BAND_QUANTILES,
+        BAND_FOLDS,
         FEATURES,
         gridiron.__version__,
         sklearn.__version__,
@@ -141,6 +152,43 @@ def _fit_component(component: str, x: pd.DataFrame, y: pd.Series) -> Estimator:
             return DummyRegressor(strategy="constant", constant=0.0).fit(x, y)
         return HistGradientBoostingRegressor(loss="poisson", **HGB_PARAMS).fit(x, y)
     return HistGradientBoostingRegressor(loss="squared_error", **HGB_PARAMS).fit(x, y)
+
+
+def _fit_components(
+    rows: pd.DataFrame, position: str, features: tuple[str, ...]
+) -> dict[str, Estimator]:
+    x = rows[list(features)].astype("float64")
+    # A feature with no values at all (e.g. last season's average when training starts
+    # with the first season) cannot be binned; as a constant it is unused.
+    x = x.fillna({c: 0.0 for c in x.columns if x[c].isna().all()})
+    return {
+        c: _fit_component(c, x, rows[c].astype("float64")) for c in POSITION_COMPONENTS[position]
+    }
+
+
+def _project_ppr(
+    components: dict[str, Estimator], rows: pd.DataFrame, features: tuple[str, ...]
+) -> pd.Series:
+    x = rows[list(features)].astype("float64")
+    line = pd.DataFrame({c: e.predict(x) for c, e in components.items()}, index=rows.index)
+    for c in COUNT_COMPONENTS & set(line):
+        line[c] = line[c].clip(lower=0)
+    return points(line, "ppr")
+
+
+def out_of_fold(
+    rows: pd.DataFrame, position: str, features: tuple[str, ...] = FEATURES
+) -> pd.Series:
+    """Projected PPR points for one position's training rows, each from component models
+    fitted without the row's season (``BAND_FOLDS`` folds of whole seasons)."""
+    # A single season (only in the small test fixtures) is split by week instead.
+    groups = rows["season"] if rows["season"].nunique() > 1 else rows["week"]
+    folds = GroupKFold(n_splits=min(BAND_FOLDS, groups.nunique()))
+    projected = pd.Series(np.nan, index=rows.index)
+    for fit_on, held_out in folds.split(rows, groups=groups):
+        components = _fit_components(rows.iloc[fit_on], position, features)
+        projected.iloc[held_out] = _project_ppr(components, rows.iloc[held_out], features)
+    return projected
 
 
 @dataclass
@@ -200,32 +248,14 @@ class ProjectionModel:
             rows = frame[frame["position"] == position]
             if rows.empty:
                 raise ValueError(f"no training rows for {position}")
-            x = rows[list(model.features)].astype("float64")
-            # A feature with no values at all (e.g. last season's average when training
-            # starts with the first season) cannot be binned; as a constant it is unused.
-            x = x.fillna({c: 0.0 for c in x.columns if x[c].isna().all()})
-            model.components[position] = {
-                c: _fit_component(c, x, rows[c].astype("float64"))
-                for c in POSITION_COMPONENTS[position]
-            }
+            model.components[position] = _fit_components(rows, position, model.features)
             model.training_rows[position] = len(rows)
-            projected = model._project(rows, position)
             model.bands[position] = Band.fit(
-                projected, rows["fantasy_points_ppr"].astype("float64")
+                out_of_fold(rows, position, model.features), rows[TARGET].astype("float64")
             )
         last = frame.sort_values(["season", "week"]).iloc[-1]
         model.trained_through = (int(last["season"]), int(last["week"]))
         return model
-
-    def _project(self, rows: pd.DataFrame, position: str) -> pd.Series:
-        """Projected PPR points from the component models (for fitting the bands)."""
-        x = rows[list(self.features)].astype("float64")
-        line = pd.DataFrame(
-            {c: e.predict(x) for c, e in self.components[position].items()}, index=rows.index
-        )
-        for c in COUNT_COMPONENTS & set(line):
-            line[c] = line[c].clip(lower=0)
-        return points(line, "ppr")
 
     def predict(self, frame: pd.DataFrame) -> pd.DataFrame:
         """Projected stat line, points in each format, and floor/ceiling per format.
