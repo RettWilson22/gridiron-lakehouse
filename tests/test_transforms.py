@@ -181,4 +181,8 @@ def test_warn_rules_hold_on_the_fixture(
         failures = quality.count_failures(frame, quality.WARN.get(name, {}))
         # A few players have no id crosswalk entry, so no snap count either.
         allowed = {"mapped_to_gsis_id", "has_snap_count"}
-        assert {k: v for k, v in failures.items() if v and k not in allowed} == {}, name
+        unexpected = {k: v for k, v in failures.items() if v and k not in allowed}
+        if name == "player_stats":
+            # Four box scores of a real name with a comma: "Kenneth Murray, Jr.".
+            assert unexpected.pop("plain_player_name", 0) == 4
+        assert unexpected == {}, name
