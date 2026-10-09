@@ -2,14 +2,18 @@
 
 How the projections are built and how they are judged. Backtest numbers come from
 `make model-local` run on the local data on 2026-10-09 (UTC), after gradient-boosting early
-stopping was switched off (see Model); the full output, including every metric below, is
-[`artifacts/backtest_metrics.json`](../artifacts/backtest_metrics.json).
+stopping was switched off and the floor and ceiling were moved to out-of-fold projections
+(see Model); the full output, including every metric below, is
+[`artifacts/backtest_metrics.json`](../artifacts/backtest_metrics.json), and the bootstrap
+intervals are in [`artifacts/backtest_intervals.json`](../artifacts/backtest_intervals.json).
 
 The app's Track record tab and the public snapshot show the Databricks run of 2026-10-09
-instead, which was made before that change. The sample sizes, baselines and expert rankings
-are identical, but the model numbers differ: MAE by at most 0.100, rank correlation by at
-most 0.019 and range coverage by at most 1.6 percentage points. The app will show the
-current method after the next deploy and job run.
+instead, which was made before the floor and ceiling change. The sample sizes, baselines
+and expert rankings are identical. The cloud model is trained separately, so its MAE
+differs by at most 0.026 and its rank correlation by at most 0.010, and its ranges are the
+old ones (77.5-83.8% inside the 10th-90th range over the three seasons). The app will show
+the current method after the next deploy and job run. The intervals are only in the
+artifact, not in the app.
 
 ## Data sources
 
@@ -99,7 +103,33 @@ deployed. The pooled MAE moved by 0.04 points or less at every position.
 
 Floor and ceiling are the 10th and 90th percentile of actual PPR points among training
 player-weeks with a similar projection (20 equal-count bins, interpolated, made monotone),
-scaled to half PPR and standard by the ratio of the projections.
+scaled to half PPR and standard by the ratio of the projections. The projection used to
+place a training row in a bin is out of fold: the training seasons are split into three
+groups of whole seasons (scikit-learn's `GroupKFold` by season), and each group is
+projected by component models fitted on the other two. The fold models only see the
+seasons the model itself trains on, so the bands for a test season still use nothing from
+that season or later.
+
+Until 2026-10-09 the bands came from the model's projections of its own training rows.
+Those miss by less than projections of new data, and over the three test seasons the old
+ranges held only 77.5% of QB and 78.7% of TE outcomes (results below). The number of folds
+was chosen on the 2022 season (trained on 2018-2021), like the other design choices, and
+not on the test seasons. Share of 2022 outcomes inside the range, in the same expert top-N
+pool as the backtest:
+
+| Bands fitted on | QB | RB | WR | TE |
+| --- | --- | --- | --- | --- |
+| The model's own training projections (before) | 82.1% | 79.1% | 82.9% | 76.4% |
+| 2 folds | 87.6% | 84.4% | 84.2% | 84.7% |
+| 3 folds | 86.3% | 83.9% | 85.0% | 83.1% |
+| 4 folds (one season each) | 86.3% | 83.4% | 84.7% | 82.6% |
+
+Three folds came within half a point of one season per fold at every position, with fewer
+extra fits. On 2022 every out-of-fold choice ran wide, and the test seasons repeat that for
+RBs and WRs. The extra fits make training slower: every fit now fits each position's
+component models three more times, each time on about two thirds of the seasons.
+`make model-local` went from 80 to 271 seconds when every season is refitted, and from 20
+to 60 seconds on a rerun ([verification.md](verification.md)).
 
 The design was settled in exploratory runs on the 2022 season (trained on 2018-2021) before
 any test season was scored. Those runs are not included in the repository as a script; the
@@ -149,23 +179,43 @@ position (`pool_coverage`).
 MAE and RMSE are in PPR points. Rank correlation is Spearman's within each position-week,
 averaged over weeks. ECR has no point values, so it is compared on ranking only.
 
+Each gap between the model and another method comes with a 95% interval from a paired
+bootstrap over weeks. The scored weeks of a season (or of all three) are resampled with
+replacement 10,000 times with a fixed seed; every player-week of a drawn week comes along,
+and all methods are scored on the same draw. Weeks are the unit because players in the same
+week share games and news, so their errors are not independent. The interval runs from the
+2.5th to the 97.5th percentile of the resampled gaps: the model's MAE minus each baseline's,
+and its rank correlation minus the experts'. A gap is called distinguishable from zero
+below when its interval leaves out zero. The intervals cover week-to-week noise only, not
+the choice of test seasons, and with 14 to 16 weeks a single season's intervals are wide.
+
 Finished seasons are not refitted on every run. Each season's model version ends in a
 fingerprint (sha256) of the rows it trains on and the rows it projects, the model settings
-and the package versions (`walk-forward-2024-c083cf3c0f29` in the local run). A run reuses the
+and the package versions (`walk-forward-2024-d02df1f4517a` in the local run). A run reuses the
 stored projections of any season whose fingerprint is unchanged and refits the rest. The
 live model works the same way: its MLflow run and registered version are tagged with the
 fingerprint of its training rows, and the train task skips fitting and registering when
-the champion already has it. On the local data a rerun with nothing changed took 21 seconds
-instead of 86.
+the champion already has it. On the local data a rerun with nothing changed took 60 seconds
+instead of 271; the local runner always refits the live model, which is most of that.
 
 ### 2023-2025 combined
 
 | Position | Player-weeks | MAE model | MAE last 3 | MAE season avg | RMSE model | RMSE last 3 | RMSE season avg | Rank corr. model | Rank corr. last 3 | Rank corr. season avg | Rank corr. ECR | Inside 10th-90th |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| QB | 1,091 | **6.37** | 6.83 | 6.66 | **7.96** | 8.69 | 8.48 | 0.308 | 0.200 | 0.223 | **0.314** | 77.5% |
-| RB | 2,170 | **5.70** | 6.29 | 6.04 | **7.39** | 8.16 | 7.84 | 0.475 | 0.391 | 0.426 | **0.499** | 82.6% |
-| WR | 3,221 | **5.79** | 6.50 | 6.17 | **7.51** | 8.29 | 7.98 | 0.433 | 0.321 | 0.364 | **0.458** | 83.5% |
-| TE | 1,075 | **5.34** | 5.94 | 5.58 | **6.98** | 7.63 | 7.22 | 0.276 | 0.192 | 0.209 | **0.316** | 78.7% |
+| QB | 1,091 | **6.37** | 6.83 | 6.66 | **7.96** | 8.69 | 8.48 | 0.308 | 0.200 | 0.223 | **0.314** | 80.4% |
+| RB | 2,170 | **5.70** | 6.29 | 6.04 | **7.39** | 8.16 | 7.84 | 0.475 | 0.391 | 0.426 | **0.499** | 84.8% |
+| WR | 3,221 | **5.79** | 6.50 | 6.17 | **7.51** | 8.29 | 7.98 | 0.433 | 0.321 | 0.364 | **0.458** | 85.1% |
+| TE | 1,075 | **5.34** | 5.94 | 5.58 | **6.98** | 7.63 | 7.22 | 0.276 | 0.192 | 0.209 | **0.316** | 81.5% |
+
+Gaps with 95% intervals, model minus the other method (negative MAE gaps favor the
+model, negative rank correlation gaps favor the experts):
+
+| Position | MAE, model minus last 3 | MAE, model minus season avg | Rank corr., model minus ECR |
+| --- | --- | --- | --- |
+| QB | -0.46 (-0.69 to -0.24) | -0.29 (-0.60 to -0.02) | -0.007 (-0.036 to 0.022) |
+| RB | -0.59 (-0.72 to -0.46) | -0.34 (-0.46 to -0.22) | -0.023 (-0.045 to -0.002) |
+| WR | -0.70 (-0.81 to -0.59) | -0.37 (-0.55 to -0.23) | -0.025 (-0.040 to -0.010) |
+| TE | -0.60 (-0.81 to -0.40) | -0.24 (-0.39 to -0.09) | -0.040 (-0.080 to 0.005) |
 
 ### By season
 
@@ -180,22 +230,60 @@ MAE, and rank correlation model / ECR.
 | 2025 MAE model / last 3 / season avg | 6.59 / 7.14 / 7.21 | 5.90 / 6.51 / 6.09 | 5.64 / 6.33 / 6.11 | 5.50 / 6.17 / 5.74 |
 | 2025 rank corr. model / ECR | 0.231 / 0.225 | 0.478 / 0.512 | 0.434 / 0.452 | 0.233 / 0.257 |
 
+Gaps with 95% intervals, model minus the other method:
+
+| Season | Gap | QB | RB | WR | TE |
+| --- | --- | --- | --- | --- | --- |
+| 2023 | MAE minus last 3 | -0.56 (-0.92 to -0.17) | -0.67 (-0.90 to -0.45) | -0.69 (-0.83 to -0.54) | -0.44 (-0.79 to -0.08) |
+| 2023 | MAE minus season avg | -0.22 (-0.81 to 0.26) | -0.51 (-0.77 to -0.27) | -0.48 (-0.85 to -0.21) | -0.24 (-0.49 to -0.02) |
+| 2023 | Rank corr. minus ECR | -0.030 (-0.074 to 0.011) | -0.002 (-0.046 to 0.043) | -0.032 (-0.055 to -0.009) | -0.078 (-0.124 to -0.032) |
+| 2024 | MAE minus last 3 | -0.25 (-0.59 to 0.11) | -0.48 (-0.68 to -0.26) | -0.73 (-0.94 to -0.52) | -0.70 (-0.99 to -0.45) |
+| 2024 | MAE minus season avg | 0.02 (-0.33 to 0.33) | -0.32 (-0.51 to -0.13) | -0.15 (-0.32 to 0.02) | -0.24 (-0.48 to 0.02) |
+| 2024 | Rank corr. minus ECR | 0.005 (-0.048 to 0.056) | -0.036 (-0.071 to -0.011) | -0.024 (-0.056 to 0.008) | -0.014 (-0.074 to 0.046) |
+| 2025 | MAE minus last 3 | -0.55 (-0.95 to -0.17) | -0.60 (-0.82 to -0.39) | -0.69 (-0.90 to -0.48) | -0.67 (-1.08 to -0.27) |
+| 2025 | MAE minus season avg | -0.62 (-1.24 to -0.17) | -0.18 (-0.31 to -0.05) | -0.46 (-0.76 to -0.25) | -0.24 (-0.54 to 0.04) |
+| 2025 | Rank corr. minus ECR | 0.006 (-0.050 to 0.057) | -0.033 (-0.063 to 0.002) | -0.018 (-0.041 to 0.004) | -0.025 (-0.116 to 0.081) |
+
+Share of outcomes inside the 10th-90th range, with the old bands (fitted on the model's own
+training projections) and the out-of-fold bands:
+
+| Season | QB | RB | WR | TE |
+| --- | --- | --- | --- | --- |
+| 2023 | 78.2% / 82.9% | 84.6% / 86.5% | 82.6% / 85.0% | 77.5% / 82.7% |
+| 2024 | 76.6% / 78.4% | 82.9% / 85.8% | 82.9% / 83.8% | 79.3% / 81.4% |
+| 2025 | 77.8% / 79.6% | 80.5% / 82.5% | 84.8% / 86.4% | 79.4% / 80.4% |
+| 2023-2025 | 77.5% / 80.4% | 82.6% / 84.8% | 83.5% / 85.1% | 78.7% / 81.5% |
+
+Only the ranges changed: the point projections, and so every MAE, RMSE, bias and rank
+correlation, are the same as before.
+
 ### Reading the results
 
 * **Points.** Over the three seasons the model has the lowest MAE and RMSE at every
-  position, by 0.24 to 0.37 points per player-week against the better of the two averages.
-  It is not a clean sweep: for 2024 QBs the season-to-date average had a slightly lower MAE
+  position, by 0.24 to 0.37 points per player-week against the better of the two averages
+  (the season-to-date average at every position). All four gaps are distinguishable from
+  zero, the QB one only just (-0.60 to -0.02). Against the last-three-games average the
+  gaps are 0.46 to 0.70 points and clearly not noise. Season by season it is less clear:
+  the gap to the season average is within noise for QBs in 2023 and 2024, WRs in 2024 and
+  TEs in 2024 and 2025, and for 2024 QBs the season average even had a slightly lower MAE
   (6.32 against 6.34), though a higher RMSE.
 * **Ranking.** The model ranks players better than both averages at every position, and
-  worse than FantasyPros consensus at every position over the three seasons (by 0.006 to
-  0.040). It matched or beat ECR only for QBs in 2024 and 2025. Experts see things this
-  model does not: news, coaching intent, the end of the week's injury picture.
+  worse than FantasyPros consensus at every position over the three seasons (by 0.007 to
+  0.040). Only the RB and WR gaps are distinguishable from zero. The QB gap (0.308 against
+  0.314) is noise, with an interval of -0.036 to 0.022, and the TE gap, the largest at
+  0.040, has an interval that just crosses zero (-0.080 to 0.005). By season, the experts'
+  edge is distinguishable only for WRs and TEs in 2023 and RBs in 2024. The model matched
+  or beat ECR only for QBs in 2024 and 2025, within noise. Experts see things this model
+  does not: news, coaching intent, the end of the week's injury picture.
 * **Bias.** In this pool the model projects 0.4 to 1.0 points low on average. The pool is
   players the experts rank highly, and the model is trained on every candidate, including
   backups who often score zero, so it shades expert favorites down.
-* **Range.** A calibrated 80% range should contain about 80% of outcomes. The model's
-  10th-90th percentile ranges contained 77.5-83.5% depending on position: slightly narrow
-  for QBs and TEs, slightly wide for RBs and WRs.
+* **Range.** A calibrated 80% range should contain about 80% of outcomes. With the bands
+  fitted on out-of-fold projections, the model's 10th-90th percentile ranges contained
+  80.4% (QB) to 85.1% (WR) of outcomes, up from 77.5-83.5% with the old bands. That fixed
+  the narrow QB and TE ranges (80.4% and 81.5%) but made the RB and WR ranges, which were
+  already a little wide, wider (84.8% and 85.1%). QBs were still slightly under in 2024
+  (78.4%) and 2025 (79.6%).
 
 ### What the comparison does and does not control
 
@@ -229,4 +317,6 @@ reproduces the Python sample sizes, MAE and interval coverage.
   kickoff; for the Tuesday and Thursday runs that is days before the game.
 * Kickers and defenses are not modelled.
 * Samples are small: five training seasons for the first test season, and 14 to 16 scored
-  weeks per test season.
+  weeks per test season, so single-season intervals are wide.
+* The out-of-fold ranges run wide for RBs and WRs (about 85% of outcomes inside a 10th-90th
+  range). The quantiles are not recalibrated per position.

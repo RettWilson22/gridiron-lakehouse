@@ -54,6 +54,9 @@ Changed since that deployment and not yet deployed, all checked locally (below):
   for the results task, and a sync that ignores `generated_at` on its own.
 * The app: one cached sheet per week, league scoring in a form, escaped third-party
   text, capped search input, and small wording changes.
+* The model: floor and ceiling bands fitted on out-of-fold projections (new ranges, same
+  point projections), and week-level bootstrap intervals for the backtest comparisons,
+  which only the local runner writes (`artifacts/backtest_intervals.json`).
 
 ## Local: a laptop against the real data
 
@@ -87,18 +90,38 @@ Apple Silicon, Python 3.12, Java 21, on 2026-10-08 and 2026-10-09, with the comm
 * **Skipping refits** (2026-10-09): `make model-local` took 86 seconds with no stored
   backtest table and 19 to 21 seconds on reruns that reused all four backtest seasons,
   with identical metrics.
+* **Choosing the band folds** (2026-10-09): the 2022 season, projected by a model
+  trained on 2018-2021 with bands from its own training projections and from 2, 3 and 4
+  out-of-fold groups, gave the coverage table in
+  [methodology.md](methodology.md#model). The walk-forward step for that one season took
+  24, 34, 45 and 63 seconds.
+* **Out-of-fold bands and bootstrap intervals** (2026-10-09, 21:15 to 21:20): before the
+  change, `make model-local` on a copy of the data reproduced
+  `artifacts/backtest_metrics.json` exactly, in 80 seconds with no stored backtest table
+  and 20 seconds on a rerun. After it, `make model-local` refitted all four backtest
+  seasons (the fold setting is part of the fingerprint) in 271 seconds, and a rerun that
+  reused all four took 60 seconds. The 27,857 backtest projections, sample sizes and every
+  MAE, RMSE, bias and rank correlation were identical to before; only range coverage
+  changed (2023-2025: QB 77.5% to 80.4%, RB 82.6% to 84.8%, WR 83.5% to 85.1%, TE 78.7% to
+  81.5%). Recomputing the intervals from the stored projections in a separate process gave
+  the same numbers as `artifacts/backtest_intervals.json`. The live run kept the 33
+  projections for Thursday's game as published on 2026-10-08 and refreshed the other 539
+  with the new ranges.
 * **Job smoke test** (`make smoke-jobs`): the real `train` (twice), `score` (twice) and
   `publish_serving` (twice) entry points against a local Spark catalog, with a throwaway
   MLflow file store as tracking store and model registry. The first `train` registered v1
   as champion with its training fingerprint; the second reused both backtest seasons,
   found the champion trained on the same data and registered nothing. `score` loaded the
-  champion through the registry, as in production. 79 seconds in all.
+  champion through the registry, as in production. 79 seconds in all. Rerun after the
+  band change (2026-10-09, 21:22 to 21:26) with the same results: the second `train`
+  reused both seasons and kept v1. It took 206 seconds, with other local work running
+  part of that time.
 * **New silver expectations** (names, teams, positions), run over the local silver
   tables: the only rows flagged were the 88 box scores and 1 player row of "Kenneth
   Murray, Jr." (a comma in the name).
 * **dbt**: `dbt build --target ci` passes 54 nodes on the fixtures; `make dbt-local` passes 55
   over the full local data, including the SQL-vs-Python reconciliation test.
-* **Checks**: `make check` (ruff, mypy strict, generated-SQL check, dbt CI build, 211 pytest
+* **Checks**: `make check` (ruff, mypy strict, generated-SQL check, dbt CI build, 219 pytest
   tests) passes; CI runs the same steps on every push to main and every pull request.
 * **App**: the Streamlit app's 13 headless tests (`tests/test_streamlit_app.py`) cover the
   local DuckDB mode and the public snapshot mode, including the league scoring form, the
