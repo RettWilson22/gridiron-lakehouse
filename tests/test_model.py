@@ -7,7 +7,15 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 
 from gridiron.backtest import completed
 from gridiron.features import COMPONENTS
-from gridiron.model import POSITION_COMPONENTS, Band, ProjectionModel, _fit_component
+from gridiron.model import (
+    HGB_PARAMS,
+    OUTPUT_COLUMNS,
+    POSITION_COMPONENTS,
+    Band,
+    ProjectionModel,
+    _fit_component,
+    fingerprint,
+)
 from gridiron.workflow import Prepared
 
 
@@ -17,6 +25,30 @@ def fitted(prepared: Prepared) -> tuple[ProjectionModel, pd.DataFrame]:
     model = ProjectionModel.fit(history[history["season"] < 2026])
     test = history[history["season"] == 2026]
     return model, pd.concat([test, model.predict(test)], axis=1)
+
+
+def test_predict_returns_the_output_columns(fitted: tuple[ProjectionModel, pd.DataFrame]) -> None:
+    model, projected = fitted
+    assert tuple(model.predict(projected.head(3)).columns) == OUTPUT_COLUMNS
+
+
+def test_fingerprint_follows_what_the_model_learns_from(
+    prepared: Prepared, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    history = completed(prepared.frame)
+    baseline = fingerprint(history)
+    assert len(baseline) == 64
+    assert fingerprint(history.sample(frac=1.0, random_state=1)) == baseline  # row order
+    assert fingerprint(history.assign(player_name="someone else")) == baseline  # not an input
+
+    corrected = history.copy()
+    corrected.loc[corrected.index[0], "fantasy_points_ppr"] += 1.0  # a stat correction
+    assert fingerprint(corrected) != baseline
+    train, test = history[history["season"] < 2026], history[history["season"] == 2026]
+    assert fingerprint(train, test) != fingerprint(history)  # which rows train, which test
+
+    monkeypatch.setitem(HGB_PARAMS, "max_iter", 201)
+    assert fingerprint(history) != baseline
 
 
 def test_prediction_columns_and_invariants(fitted: tuple[ProjectionModel, pd.DataFrame]) -> None:

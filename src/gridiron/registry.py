@@ -4,6 +4,10 @@ The fitted ``ProjectionModel`` is saved with joblib and wrapped in an MLflow pyf
 input is the feature frame and whose output is the projected stat line, points, floors and
 ceilings. The ``gridiron`` package is logged with the model (``code_paths``) so the model
 loads anywhere the pinned scikit-learn version is installed.
+
+Each registered version is tagged with the fingerprint of its training data
+(``model.fingerprint``). The train task skips fitting and registering when the current
+champion already carries the fingerprint of the data it would train on.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ import joblib
 import mlflow
 import pandas as pd
 import sklearn
+from mlflow.exceptions import MlflowException
 from mlflow.models import infer_signature
 from mlflow.pyfunc import PythonModel  # type: ignore[attr-defined]  # not re-exported
 
@@ -25,6 +30,30 @@ from gridiron.model import ProjectionModel
 
 INPUT_COLUMNS: Final = ("position", *FEATURES)
 ARTIFACT_KEY: Final = "projection_model"
+MODEL_NAME: Final = "fantasy_projection"
+CHAMPION_ALIAS: Final = "champion"
+FINGERPRINT_TAG: Final = "training_fingerprint"
+
+
+def registered_name(catalog: str, schema: str) -> str:
+    """The Unity Catalog name of the registered model."""
+    return f"{catalog}.{schema}.{MODEL_NAME}"
+
+
+def champion_trained_on(client: Any, name: str, fingerprint: str) -> Any | None:
+    """The champion model version if it was trained on data with ``fingerprint``, else None
+    (also when there is no registered model or no champion yet)."""
+    try:
+        champion = client.get_model_version_by_alias(name, CHAMPION_ALIAS)
+    except MlflowException:
+        return None
+    return champion if (champion.tags or {}).get(FINGERPRINT_TAG) == fingerprint else None
+
+
+def promote(client: Any, name: str, version: str, fingerprint: str) -> None:
+    """Tag a registered version with its training fingerprint and make it the champion."""
+    client.set_model_version_tag(name, version, FINGERPRINT_TAG, fingerprint)
+    client.set_registered_model_alias(name, CHAMPION_ALIAS, version)
 
 
 def model_input(frame: pd.DataFrame) -> pd.DataFrame:

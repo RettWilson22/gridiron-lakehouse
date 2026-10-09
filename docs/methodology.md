@@ -149,6 +149,15 @@ position (`pool_coverage`).
 MAE and RMSE are in PPR points. Rank correlation is Spearman's within each position-week,
 averaged over weeks. ECR has no point values, so it is compared on ranking only.
 
+Finished seasons are not refitted on every run. Each season's model version ends in a
+fingerprint (sha256) of the rows it trains on and the rows it projects, the model settings
+and the package versions (`walk-forward-2024-c083cf3c0f29` in the local run). A run reuses the
+stored projections of any season whose fingerprint is unchanged and refits the rest. The
+live model works the same way: its MLflow run and registered version are tagged with the
+fingerprint of its training rows, and the train task skips fitting and registering when
+the champion already has it. On the local data a rerun with nothing changed took 21 seconds
+instead of 86.
+
 ### 2023-2025 combined
 
 | Position | Player-weeks | MAE model | MAE last 3 | MAE season avg | RMSE model | RMSE last 3 | RMSE season avg | Rank corr. model | Rank corr. last 3 | Rank corr. season avg | Rank corr. ECR | Inside 10th-90th |

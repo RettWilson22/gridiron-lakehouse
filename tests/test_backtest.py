@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -85,9 +87,38 @@ def test_walk_forward_trains_only_on_earlier_seasons(
     monkeypatch.setattr(ProjectionModel, "fit", classmethod(spy))
     projected = bt.walk_forward(prepared.frame, [2025, 2026], {2026: 3})
     assert seen == [(2024, 2024), (2025, 2024)]
-    assert set(projected["model_version"]) == {"walk-forward-2025", "walk-forward-2026"}
+    versions = sorted(projected["model_version"].unique())
+    assert [v.rsplit("-", 1)[0] for v in versions] == ["walk-forward-2025", "walk-forward-2026"]
+    assert all(re.fullmatch(r"[0-9a-f]{12}", v.rsplit("-", 1)[1]) for v in versions)
     assert projected[projected["season"] == 2026]["week"].max() == 2
     assert projected["is_final"].all()
+
+
+def test_walk_forward_refits_only_seasons_whose_data_changed(
+    prepared: Prepared, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = bt.walk_forward(prepared.frame, [2025, 2026], {2026: 3})
+    fits: list[int] = []
+    original = ProjectionModel.fit.__func__  # type: ignore[attr-defined]
+
+    def spy(cls: type[ProjectionModel], frame: pd.DataFrame) -> ProjectionModel:
+        fits.append(int(frame["season"].max()) + 1)  # the season the model projects
+        model: ProjectionModel = original(cls, frame)
+        return model
+
+    monkeypatch.setattr(ProjectionModel, "fit", classmethod(spy))
+    # Stored projections come back from a table: other row order, int32 keys.
+    stored = first.sample(frac=1.0, random_state=0).astype({"season": "int32", "week": "int32"})
+    again = bt.walk_forward(prepared.frame, [2025, 2026], {2026: 3}, stored=stored)
+    assert fits == []
+    pd.testing.assert_frame_equal(again, first)
+
+    # A newly completed week changes what the 2026 model projects; 2025 is reused.
+    later = bt.walk_forward(prepared.frame, [2025, 2026], {2026: 4}, stored=stored)
+    assert fits == [2026]
+    assert set(later["model_version"]) - set(first["model_version"]) == {
+        later.loc[later["season"] == 2026, "model_version"].iloc[0]
+    }
 
 
 def test_pooled_scope_is_the_multi_season_scope() -> None:

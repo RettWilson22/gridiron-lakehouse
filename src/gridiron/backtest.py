@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 
 from gridiron.features import KEY, with_baselines
-from gridiron.model import ProjectionModel
+from gridiron.model import OUTPUT_COLUMNS, ProjectionModel, fingerprint
 from gridiron.tiers import POOL
 
 METHODS: Final = ("model", "last3", "season_avg", "ecr")
@@ -53,11 +53,18 @@ def walk_forward(
     frame: pd.DataFrame,
     seasons: Iterable[int],
     before_week: dict[int, int] | None = None,
+    stored: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Season-by-season walk-forward projections for completed weeks of ``seasons``.
 
     ``before_week`` optionally limits a season to weeks before the given week (used for
     the in-progress season, whose remaining weeks are projected live instead).
+
+    Each season's ``model_version`` is ``walk-forward-<season>-<fingerprint>``, where the
+    fingerprint covers the rows the model trains on and the rows it projects
+    (``model.fingerprint``). ``stored`` is an earlier run's output (the
+    ``backtest_projections`` table): a season whose version is unchanged reuses its stored
+    model outputs instead of refitting, so finished seasons are fitted once.
     """
     history = completed(frame)
     parts = []
@@ -68,12 +75,36 @@ def walk_forward(
             test = test[test["week"] < before_week[season]]
         if test.empty or train.empty:
             continue
-        model = ProjectionModel.fit(train)
-        projected = with_baselines(pd.concat([test, model.predict(test)], axis=1))
-        parts.append(projected.assign(kind="backtest", model_version=f"walk-forward-{season}"))
+        version = f"walk-forward-{season}-{fingerprint(train, test)[:12]}"
+        outputs = stored_outputs(stored, version, test)
+        if outputs is None:
+            outputs = ProjectionModel.fit(train).predict(test)
+        projected = with_baselines(pd.concat([test, outputs], axis=1))
+        parts.append(projected.assign(kind="backtest", model_version=version))
     if not parts:
         return frame.iloc[0:0]
     return pd.concat(parts, ignore_index=True)
+
+
+def stored_outputs(
+    stored: pd.DataFrame | None, version: str, test: pd.DataFrame
+) -> pd.DataFrame | None:
+    """The model outputs stored for ``version``, aligned to ``test``; None unless the stored
+    rows are exactly the test rows."""
+    if stored is None or "model_version" not in stored:
+        return None
+    rows = stored[stored["model_version"] == version]
+    if len(rows) != len(test):
+        return None
+    keyed = rows.astype({"season": "int64", "week": "int64", "player_id": str}).set_index(KEY)
+    wanted = pd.MultiIndex.from_frame(
+        test[KEY].astype({"season": "int64", "week": "int64", "player_id": str})
+    )
+    if keyed.index.has_duplicates or not wanted.isin(keyed.index).all():
+        return None
+    outputs = keyed.loc[wanted, list(OUTPUT_COLUMNS)].astype("float64")
+    outputs.index = test.index
+    return outputs
 
 
 def attach_ecr(projected: pd.DataFrame, ecr: pd.DataFrame) -> pd.DataFrame:

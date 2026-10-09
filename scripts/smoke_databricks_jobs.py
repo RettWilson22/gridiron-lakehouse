@@ -1,10 +1,12 @@
 """Smoke-test the Databricks job entry points against a local Spark catalog.
 
 Loads the local lakehouse Parquet output into a local Spark database, then runs the real
-``train``, ``score`` and ``publish_serving`` entry points against it with a local MLflow
-tracking store and Unity Catalog registration disabled. This checks the wiring (table
-names, pandas <-> Spark conversion, MLflow logging and loading, publish SQL) without a
-Databricks workspace.
+``train``, ``score`` and ``publish_serving`` entry points against it, with a throwaway
+MLflow file store as both the tracking store and the model registry (in place of Unity
+Catalog). This checks the wiring (table names, pandas <-> Spark conversion, MLflow logging,
+registration, the champion alias and loading, publish SQL) without a Databricks workspace.
+``train`` runs twice: the second run must reuse every stored backtest season and keep the
+champion instead of registering a new version.
 
     python scripts/smoke_databricks_jobs.py --lakehouse-dir data/lakehouse
 """
@@ -19,7 +21,10 @@ import tempfile
 from pathlib import Path
 from types import ModuleType
 
+from mlflow.tracking import MlflowClient
+
 from gridiron.local_spark import local_session
+from gridiron.registry import registered_name
 from gridiron.workflow import INPUT_TABLES
 
 JOBS = Path(__file__).resolve().parent.parent / "databricks" / "jobs"
@@ -42,7 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     work = Path(tempfile.mkdtemp(prefix="gridiron-smoke-"))
     # A throwaway file store keeps the smoke run dependency-free (mlflow-skinny has no
     # SQL backend); MLflow requires an explicit opt-in for it.
-    os.environ["MLFLOW_TRACKING_URI"] = f"file:{work / 'mlruns'}"
+    store = f"file:{work / 'mlruns'}"
+    os.environ["MLFLOW_TRACKING_URI"] = store
     os.environ["MLFLOW_ALLOW_FILE_STORE"] = "true"
     spark = local_session("gridiron-smoke", warehouse_dir=work / "warehouse")
     spark.sparkContext.setLogLevel("ERROR")
@@ -56,23 +62,26 @@ def main(argv: list[str] | None = None) -> int:
         ).saveAsTable(f"gridiron.{name}")
 
     common = ["--catalog", "spark_catalog", "--schema", "gridiron"]
-    model_uri = load_job("train").run_task(
-        [
-            *common,
-            "--experiment",
-            "gridiron-smoke",
-            "--test-seasons",
-            args.test_seasons,
-            "--skip-registration",
-        ]
-    )
-    if model_uri is None:
+    train = load_job("train")
+    train_args = [
+        *common,
+        *("--experiment", "gridiron-smoke", "--test-seasons", args.test_seasons),
+        *("--registry-uri", store),
+    ]
+    if train.run_task(train_args) is None:
         print("train logged no model (no upcoming week in the local data)")
         return 1
+    # Nothing changed, so the second run must refit nothing and register no new version.
+    train.run_task(train_args)
+    name = registered_name("spark_catalog", "gridiron")
+    versions = MlflowClient().search_model_versions(f"name = '{name}'")
+    if len(versions) != 1:
+        print(f"expected one registered version after two train runs, found {len(versions)}")
+        return 1
     score = load_job("score")
-    score.main([*common, "--model-uri", model_uri])
+    score.main([*common, "--registry-uri", store])  # loads the champion, as in production
     # A second score run must keep the stored live projections stable.
-    score.main([*common, "--model-uri", model_uri])
+    score.main([*common, "--registry-uri", store])
     publish = load_job("publish_serving")
     publish.main([*common, "--serving-schema", "gridiron_serving"])
     # Second publish exercises the refresh path (table already exists).
