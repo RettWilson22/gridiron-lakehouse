@@ -12,7 +12,7 @@ where the gaps between players are large relative to the spread of the position.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Final
 
 # 12-team league, 1 QB / 2 RB / 3 WR / 1 TE / 1 FLEX (RB, WR or TE).
@@ -46,6 +46,43 @@ def _sse(sums: list[float], squares: list[float], i: int, j: int) -> float:
     return max(squares[j] - squares[i] - total * total / n, 0.0)
 
 
+def _partitions(
+    values: Sequence[float], max_k: int, good_enough: Callable[[float], bool] | None = None
+) -> tuple[int, list[list[float]], list[list[int]]]:
+    """Dynamic programme for 1, 2, ... groups, filled one number of groups at a time.
+
+    ``cost[g][j]`` is the least within-group sum of squares of ``values[:j]`` in ``g``
+    groups and ``split[g][j]`` where its last group starts. Row ``g`` only needs row
+    ``g - 1``, so one table serves every ``k``. Stops after ``max_k`` groups, or as soon as
+    ``good_enough`` accepts the total cost of a row; returns the last row filled.
+    """
+    n = len(values)
+    sums, squares = _sse_table(values)
+    inf = float("inf")
+    cost = [[inf] * (n + 1) for _ in range(max_k + 1)]
+    split = [[0] * (n + 1) for _ in range(max_k + 1)]
+    cost[0][0] = 0.0
+    for groups in range(1, max_k + 1):
+        for end in range(groups, n + 1):
+            for start in range(groups - 1, end):
+                candidate = cost[groups - 1][start] + _sse(sums, squares, start, end)
+                if candidate < cost[groups][end]:
+                    cost[groups][end] = candidate
+                    split[groups][end] = start
+        if good_enough is not None and good_enough(cost[groups][n]):
+            return groups, cost, split
+    return max_k, cost, split
+
+
+def _group_starts(split: list[list[int]], k: int, n: int) -> list[int]:
+    starts, end = [], n
+    for groups in range(k, 0, -1):
+        start = split[groups][end]
+        starts.append(start)
+        end = start
+    return sorted(starts)
+
+
 def optimal_breaks(values: Sequence[float], k: int) -> tuple[list[int], float]:
     """Best split of ``values`` (already sorted) into ``k`` contiguous groups.
 
@@ -54,24 +91,8 @@ def optimal_breaks(values: Sequence[float], k: int) -> tuple[list[int], float]:
     n = len(values)
     if not 1 <= k <= n:
         raise ValueError(f"cannot split {n} values into {k} groups")
-    sums, squares = _sse_table(values)
-    inf = float("inf")
-    cost = [[inf] * (n + 1) for _ in range(k + 1)]
-    split = [[0] * (n + 1) for _ in range(k + 1)]
-    cost[0][0] = 0.0
-    for groups in range(1, k + 1):
-        for end in range(groups, n + 1):
-            for start in range(groups - 1, end):
-                candidate = cost[groups - 1][start] + _sse(sums, squares, start, end)
-                if candidate < cost[groups][end]:
-                    cost[groups][end] = candidate
-                    split[groups][end] = start
-    starts, end = [], n
-    for groups in range(k, 0, -1):
-        start = split[groups][end]
-        starts.append(start)
-        end = start
-    return sorted(starts), cost[k][n]
+    _, cost, split = _partitions(values, k)
+    return _group_starts(split, k, n), cost[k][n]
 
 
 def assign_tiers(
@@ -89,10 +110,10 @@ def assign_tiers(
     total = sum((v - mean) ** 2 for v in values)
     starts = [0]
     if total > 0:
-        for k in range(1, min(max_tiers, n) + 1):
-            starts, sse = optimal_breaks(values, k)
-            if 1 - sse / total >= min_explained:
-                break
+        k, _, split = _partitions(
+            values, min(max_tiers, n), lambda sse: 1 - sse / total >= min_explained
+        )
+        starts = _group_starts(split, k, n)
     tiers = [0] * n
     tier = 0
     boundaries = set(starts)
