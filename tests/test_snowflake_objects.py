@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -10,6 +11,7 @@ import pytest
 
 from gridiron import scoring
 from gridiron.serving import SERVING_TABLES
+from gridiron.tiers import POOL
 from tests.conftest import GOLD, REPO_ROOT
 
 SNOWFLAKE = REPO_ROOT / "snowflake"
@@ -50,3 +52,17 @@ def test_udf_handler_needs_only_the_standard_library() -> None:
     source = (REPO_ROOT / "src" / "gridiron" / "scoring.py").read_text()
     imports = re.findall(r"^(?:from|import) ([\w.]+)", source, flags=re.MULTILINE)
     assert set(imports) <= {"__future__", "collections.abc", "math", "typing"}
+
+
+def test_sql_pool_sizes_match_the_python_pool() -> None:
+    """The evaluation pool (positional top N) is hard-coded in dbt and in the task SQL."""
+    dbt_project = (SNOWFLAKE / "dbt" / "dbt_project.yml").read_text()
+    pool_var = re.search(r"^\s*pool_size: (\{.*\})\s*$", dbt_project, flags=re.MULTILINE)
+    assert pool_var, "pool_size var not found in dbt_project.yml"
+    assert json.loads(pool_var.group(1)) == POOL
+
+    task_sql = (SNOWFLAKE / "streams_tasks" / "01_projection_results_stream_task.sql").read_text()
+    decode = re.search(r"DECODE\(POSITION, ([^)]*)\)", task_sql)
+    assert decode, "DECODE(POSITION, ...) not found in the stream task SQL"
+    pairs = re.findall(r"'(\w+)', (\d+)", decode.group(1))
+    assert {position: int(size) for position, size in pairs} == POOL

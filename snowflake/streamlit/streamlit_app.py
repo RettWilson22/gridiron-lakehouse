@@ -25,8 +25,10 @@ player_search = load_helper("player_search")
 POSITIONS = ("QB", "RB", "WR", "TE")
 FORMATS = {"PPR": "ppr", "Half PPR": "half", "Standard": "std", "Custom": "custom"}
 # Players shown by default and tiered: two starters' worth per team in a 12-team league
-# (the same pool the backtest scores).
-POOL = {"QB": 24, "RB": 48, "WR": 72, "TE": 24}
+# (the same pool the backtest scores), e.g. "24 QBs, 48 RBs, 72 WRs and 24 TEs".
+POOL: dict[str, int] = dict(tiers.POOL)
+_POOL_PARTS = [f"{size} {position}s" for position, size in POOL.items()]
+POOL_TEXT = ", ".join(_POOL_PARTS[:-1]) + " and " + _POOL_PARTS[-1]
 CHART_PLAYERS = 24
 LABEL_COLOR = "#1f4e79"
 REPO_URL = "https://github.com/RettWilson22/gridiron-lakehouse"
@@ -767,7 +769,7 @@ if section == "Track record":
     st.caption(
         "Walk-forward backtest: each season is projected by a model trained only on earlier "
         "seasons, with features from before each game. Scored on the players FantasyPros "
-        "ranked in the top 24 QBs, 48 RBs, 72 WRs and 24 TEs that week. MAE is in PPR "
+        f"ranked in the top {POOL_TEXT} that week. MAE is in PPR "
         "points (lower is better); rank correlation is Spearman's, within each week "
         "(higher is better). Expert rankings have no point values, so they are only "
         "compared on ranking. A calibrated 80% range should contain about 80% of outcomes."

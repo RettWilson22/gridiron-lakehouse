@@ -21,6 +21,11 @@ STARTERS: Final[dict[str, int]] = {"QB": 1, "RB": 2, "WR": 3, "TE": 1}
 FLEX_POSITIONS: Final = ("RB", "WR", "TE")
 # Positional ranks just outside the starters that are realistic flex plays.
 FLEX_DEPTH: Final[dict[str, int]] = {"RB": 12, "WR": 12, "TE": 4}
+# The players worth ranking at each position: two starters' worth per team (24 QBs, 48 RBs,
+# 72 WRs, 24 TEs). Tiers are drawn within it, the app lists it by default, and the backtest
+# is scored on the experts' top N of this size. The dbt ``pool_size`` var and the stream
+# task SQL repeat the numbers; tests/test_snowflake_objects.py checks they match.
+POOL: Final[dict[str, int]] = {position: 2 * n * TEAMS for position, n in STARTERS.items()}
 
 DEFAULT_MIN_EXPLAINED: Final = 0.9
 DEFAULT_MAX_TIERS: Final = 10

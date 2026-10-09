@@ -10,7 +10,7 @@ sees more than a live run: its features use closing betting lines and the final 
 report, which a Tuesday or Thursday live run does not have yet.
 
 Evaluation pool: for each position-week, the players FantasyPros ranked in the top ``N``
-of their position that week (``TOP_N``: two starters' worth per team in a 12-team
+of their position that week (``tiers.POOL``: two starters' worth per team in a 12-team
 1 QB / 2 RB / 3 WR / 1 TE league). The pool is defined by a pre-game source that is
 independent of every method being compared, and only weeks with a weekly ranking snapshot
 are scored (the latest scrape on or before the week's last game day). Within the pool, rows
@@ -31,10 +31,10 @@ from typing import Final
 import numpy as np
 import pandas as pd
 
-from gridiron.features import KEY
+from gridiron.features import KEY, with_baselines
 from gridiron.model import ProjectionModel
+from gridiron.tiers import POOL
 
-TOP_N: Final[dict[str, int]] = {"QB": 24, "RB": 48, "WR": 72, "TE": 24}
 METHODS: Final = ("model", "last3", "season_avg", "ecr")
 PREDICTIONS: Final = {
     "model": "proj_ppr",
@@ -43,19 +43,6 @@ PREDICTIONS: Final = {
 }
 MIN_PLAYERS_FOR_RANK: Final = 5
 ACTUAL: Final = "fantasy_points_ppr"
-
-
-def with_baselines(frame: pd.DataFrame) -> pd.DataFrame:
-    """Baseline projections, computed from the same pre-game features.
-
-    * last 3 games: average PPR over the player's last three games (may span seasons);
-    * season to date: average over this season's earlier games, or last season's average
-      before the player's first game of the season.
-    """
-    out = frame.copy()
-    out["baseline_last3"] = out["ppr_last3"]
-    out["baseline_season_avg"] = out["season_ppr_mean"].fillna(out["prev_season_ppr_mean"])
-    return out
 
 
 def completed(frame: pd.DataFrame) -> pd.DataFrame:
@@ -100,7 +87,7 @@ def attach_ecr(projected: pd.DataFrame, ecr: pd.DataFrame) -> pd.DataFrame:
 def evaluation_pool(projected: pd.DataFrame) -> pd.DataFrame:
     """Rows in the expert top-N pool with a value for every method (see module docstring)."""
     in_pool = (projected["ecr_position"] == projected["position"]) & (
-        projected["ecr_rank"] <= projected["position"].map(TOP_N)
+        projected["ecr_rank"] <= projected["position"].map(POOL)
     )
     pool = projected[in_pool]
     return pool.dropna(subset=[*PREDICTIONS.values(), "ecr", ACTUAL])
@@ -110,7 +97,7 @@ def pool_coverage(projected: pd.DataFrame, ecr: pd.DataFrame, seasons: Iterable[
     """Share of expert top-N player-weeks (in the scored weeks) that the model projected."""
     weeks = projected[["season", "week"]].drop_duplicates()
     top = ecr[ecr["season"].isin(list(seasons)) & ecr["player_id"].notna()]
-    top = top[top["ecr_rank"] <= top["position"].map(TOP_N)].merge(weeks, on=["season", "week"])
+    top = top[top["ecr_rank"] <= top["position"].map(POOL)].merge(weeks, on=["season", "week"])
     found = top.merge(projected[KEY].drop_duplicates(), on=KEY, how="left", indicator=True)
     return (found["_merge"] == "both").groupby(found["position"]).mean()
 

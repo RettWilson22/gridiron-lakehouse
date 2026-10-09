@@ -4,7 +4,12 @@ import itertools
 
 import pytest
 
-from gridiron.tiers import assign_tiers, optimal_breaks, start_sit
+from gridiron.tiers import POOL, STARTERS, TEAMS, assign_tiers, optimal_breaks, start_sit
+
+
+def test_pool_is_two_starters_worth_per_team() -> None:
+    assert {p: 2 * n * TEAMS for p, n in STARTERS.items()} == POOL
+    assert POOL == {"QB": 24, "RB": 48, "WR": 72, "TE": 24}
 
 
 def brute_force(values: list[float], k: int) -> float:
