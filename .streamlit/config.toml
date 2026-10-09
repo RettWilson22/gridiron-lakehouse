@@ -1,0 +1,6 @@
+# Used by the public copy on Streamlit Community Cloud and by local runs from the repo root.
+[theme]
+primaryColor = "#1f4e79"
+
+[client]
+toolbarMode = "viewer"

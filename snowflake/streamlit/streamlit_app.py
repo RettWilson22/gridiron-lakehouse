@@ -27,8 +27,14 @@ FORMATS = {"PPR": "ppr", "Half PPR": "half", "Standard": "std", "Custom": "custo
 POOL = {"QB": 24, "RB": 48, "WR": 72, "TE": 24}
 CHART_PLAYERS = 24
 LABEL_COLOR = "#1f4e79"
+REPO_URL = "https://github.com/RettWilson22/gridiron-lakehouse"
+# Comparison lines: the model stands out, the baselines recede.
+METHOD_COLORS = alt.Scale(
+    domain=["Model", "Last 3 average", "Season average", "Expert rankings"],
+    range=[LABEL_COLOR, "#9aa5b1", "#c8a24a", "#c0504d"],
+)
 
-st.set_page_config(page_title="Fantasy Cheat Sheet", layout="wide")
+st.set_page_config(page_title="Gridiron Lakehouse | Fantasy Cheat Sheet", layout="wide")
 
 
 @st.cache_resource
@@ -81,7 +87,7 @@ upcoming = weeks.loc[weeks["upcoming"] == 1, "week"]
 default_week = int(upcoming.iloc[0]) if not upcoming.empty else int(weeks["week"].max())
 week_options = [int(w) for w in weeks["week"]]
 
-st.sidebar.title("Fantasy Cheat Sheet")
+st.sidebar.title("Gridiron Lakehouse")
 week = st.sidebar.selectbox(
     "Week",
     week_options,
@@ -127,6 +133,10 @@ if fmt == "custom":
         "stat line understate their real value."
     )
 st.sidebar.caption(f"Data: {source().description}")
+st.sidebar.markdown(
+    f"Built on Databricks and Snowflake. [How it works]({REPO_URL}#readme) · "
+    f"[Source code]({REPO_URL})"
+)
 
 
 def week_sheet(position: str) -> pd.DataFrame:
@@ -183,8 +193,32 @@ def week_sheet(position: str) -> pd.DataFrame:
     return out
 
 
-st.title("Fantasy Football Cheat Sheet")
+def headline_numbers() -> dict[str, str]:
+    """The backtest in three numbers, from the longest backtest scope."""
+    summary = run("select * from marts.mart_backtest_summary")
+    if summary.empty:
+        return {}
+    scope = max(summary["scope"].unique(), key=lambda s: (len(s), s))
+    rows = summary[summary["scope"] == scope].pivot_table(
+        index="position", columns="method", values=["mae", "n"]
+    )
+    weights = rows[("n", "model")]
+    model = (rows[("mae", "model")] * weights).sum() / weights.sum()
+    last3 = (rows[("mae", "last3")] * weights).sum() / weights.sum()
+    return {
+        "scope": scope,
+        "player_weeks": f"{int(weights.sum()):,}",
+        "error_cut": f"{(last3 - model) / last3:.0%}",
+    }
+
+
 week_info = weeks[weeks["week"] == week].iloc[0]
+st.markdown(
+    f'<p style="color:{LABEL_COLOR};font-weight:600;letter-spacing:0.08em;'
+    'font-size:0.8rem;margin-bottom:0">GRIDIRON LAKEHOUSE</p>',
+    unsafe_allow_html=True,
+)
+st.title("Fantasy Football Cheat Sheet")
 if week_info["kind"] == "live":
     st.caption(
         f"{season} week {week}: live projections from the weekly Databricks job. A "
@@ -196,6 +230,27 @@ else:
         f"{season} week {week}: projected by the walk-forward backtest (a model trained on "
         "earlier seasons, using only information from before kickoff), because live "
         "projections started later in the season."
+    )
+
+headline = headline_numbers()
+projected_count = run(
+    "select count(*) as n from marts.mart_cheat_sheet where season = ? and week = ?",
+    (season, week),
+)["n"].iloc[0]
+metric_columns = st.columns(3)
+metric_columns[0].metric(f"Players projected, week {week}", f"{int(projected_count):,}")
+if headline:
+    metric_columns[1].metric(
+        "Less error than a last-3-games average",
+        headline["error_cut"],
+        help="Mean absolute error in PPR points, weighted across positions, in the "
+        f"{headline['scope']} walk-forward backtest. See Track record.",
+    )
+    metric_columns[2].metric(
+        "Player-weeks backtested",
+        headline["player_weeks"],
+        help=f"Seasons {headline['scope']}, each projected only with information from "
+        "before kickoff.",
     )
 
 sheet_tab, compare_tab, risers_tab, record_tab = st.tabs(
@@ -272,8 +327,16 @@ with compare_tab:
         for row in everyone.itertuples()
     }
     by_label = {label: pid for pid, label in labels.items()}
+    # A typical flex decision as the opening example: two running backs ranked back to back.
+    backs = everyone[everyone["position"] == "RB"].sort_values("proj", ascending=False)
+    example = [labels[pid] for pid in backs["player_id"].iloc[11:13]]
     chosen_labels = st.multiselect(
-        "Compare up to three players", list(by_label), max_selections=3, key="compare"
+        "Compare up to three players",
+        list(by_label),
+        default=example,
+        max_selections=3,
+        key="compare",
+        help="Starts with two running backs ranked back to back; pick your own players.",
     )
     chosen = [by_label[label] for label in chosen_labels]
     if not chosen:
@@ -354,13 +417,29 @@ with risers_tab:
                     "Snap share": (movers["snap_share_recent"] * 100).round(0),
                     "Snap change": (movers["snap_share_change"] * 100).round(0),
                     "Target share change": (movers["target_share_change"] * 100).round(1),
-                    "This week": movers["proj_ppr"].round(1),
-                    "Rank": movers["pos_rank_ppr"],
+                    "This week": movers["proj_ppr"].map(lambda v: "" if pd.isna(v) else f"{v:.1f}"),
+                    "Rank": movers["pos_rank_ppr"].map(lambda v: "" if pd.isna(v) else str(int(v))),
                 }
             ),
             hide_index=True,
             width="stretch",
+            column_config={
+                "xPPR last 3": st.column_config.NumberColumn(
+                    help="Expected PPR points per game over the last three games"
+                ),
+                "xPPR before": st.column_config.NumberColumn(
+                    help="Expected PPR points per game before that"
+                ),
+                "This week": st.column_config.TextColumn(
+                    help="This week's PPR projection; blank if not projected"
+                ),
+                "Rank": st.column_config.TextColumn(help="Position rank this week"),
+            },
         )
+        if movers["proj_ppr"].isna().any():
+            st.caption(
+                "Blank projection: not projected this week (bye week or not expected to play)."
+            )
 
 # Track record ----------------------------------------------------------------------------
 
@@ -380,12 +459,18 @@ with record_tab:
         }
     ).reindex(list(POSITIONS))
     coverage = chosen_scope[chosen_scope["method"] == "model"].set_index("position")
-    record["Inside 10th-90th"] = coverage["interval_coverage"]
+    record["Inside 10th-90th"] = coverage["interval_coverage"] * 100
     record["Player-weeks"] = coverage["n"]
+    two_places = st.column_config.NumberColumn(format="%.2f")
     st.dataframe(
-        record.round(3).reset_index().rename(columns={"position": "Position"}),
+        record.reset_index().rename(columns={"position": "Position"}),
         hide_index=True,
         width="stretch",
+        column_config={
+            **{name: two_places for name in record.columns if "MAE" in name or "corr" in name},
+            "Inside 10th-90th": st.column_config.NumberColumn(format="%.0f%%"),
+            "Player-weeks": st.column_config.NumberColumn(format="%d"),
+        },
     )
     st.caption(
         "Walk-forward backtest: each season is projected by a model trained only on earlier "
@@ -425,7 +510,9 @@ with record_tab:
             .encode(
                 x=alt.X("week:O", title="Week"),
                 y=alt.Y("mae:Q", title="Mean absolute error (PPR)"),
-                color=alt.Color("method:N", title=None, legend=alt.Legend(orient="bottom")),
+                color=alt.Color(
+                    "method:N", title=None, scale=METHOD_COLORS, legend=alt.Legend(orient="bottom")
+                ),
             )
             .properties(height=260, title="Points: lower is better")
         )
@@ -435,7 +522,9 @@ with record_tab:
             .encode(
                 x=alt.X("week:O", title="Week"),
                 y=alt.Y("spearman:Q", title="Rank correlation"),
-                color=alt.Color("method:N", title=None, legend=alt.Legend(orient="bottom")),
+                color=alt.Color(
+                    "method:N", title=None, scale=METHOD_COLORS, legend=alt.Legend(orient="bottom")
+                ),
             )
             .properties(height=260, title="Ranking: higher is better")
         )
