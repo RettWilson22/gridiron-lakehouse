@@ -10,7 +10,8 @@ export. Steps:
    same ``.env`` settings and CLI-profile auth as ``make sync``);
 2. build the dbt project over them in a throwaway DuckDB database;
 3. write each mart the app reads to ``streamlit_public/snapshot/<mart>.parquet``, with
-   per-player FantasyPros ranks left out (see ``REDACTED``).
+   only the columns listed in ``EXPORTED_COLUMNS`` and the per-player FantasyPros ranks
+   blanked (``BLANKED_COLUMNS``).
 
     python scripts/export_public_snapshot.py
     set -a && . ./.env && set +a && python scripts/export_public_snapshot.py --from-databricks
@@ -34,14 +35,153 @@ from gridiron.serving import SERVING_TABLES
 ROOT = Path(__file__).resolve().parent.parent
 DBT_DIR = ROOT / "snowflake" / "dbt"
 SNAPSHOT_DIR = ROOT / "streamlit_public" / "snapshot"
-# The marts the app queries (mirrors snowflake/streamlit/data_access.MARTS).
-MARTS = (
-    "mart_cheat_sheet",
-    "mart_risers",
-    "mart_projection_scorecard",
-    "mart_player_game_log",
-    "mart_backtest_summary",
-)
+# The columns copied into the public snapshot, per mart the app queries. This is an
+# allowlist: a column a dbt change adds stays out of the public copy until it is listed
+# here, after checking it is fine to publish.
+EXPORTED_COLUMNS: dict[str, tuple[str, ...]] = {
+    "mart_cheat_sheet": (
+        "projection_key",
+        "season",
+        "week",
+        "is_upcoming",
+        "game_final",
+        "kind",
+        "player_id",
+        "player_name",
+        "position",
+        "team",
+        "opponent",
+        "is_home",
+        "matchup",
+        "kickoff_at",
+        "implied_points",
+        "team_spread",
+        "depth_rank",
+        "injury_status",
+        "injury",
+        "opp_matchup_rank",
+        "ecr_rank",
+        *(
+            f"{kind}_{fmt}"
+            for fmt in ("ppr", "half", "std")
+            for kind in ("proj", "floor", "ceiling", "pos_rank", "tier", "start_sit")
+        ),
+        "proj_passing_yards",
+        "proj_passing_tds",
+        "proj_passing_interceptions",
+        "proj_rushing_yards",
+        "proj_rushing_tds",
+        "proj_receptions",
+        "proj_receiving_yards",
+        "proj_receiving_tds",
+        "proj_fumbles_lost",
+        "proj_two_point_conversions",
+        "baseline_last3",
+        "baseline_season_avg",
+        "actual_ppr",
+        "actual_half",
+        "actual_std",
+        "model_version",
+        "generated_at",
+    ),
+    "mart_risers": (
+        "riser_key",
+        "season",
+        "week",
+        "player_id",
+        "player_name",
+        "position",
+        "team",
+        "is_riser",
+        "riser_rank",
+        "baseline_basis",
+        "games_recent",
+        "games_earlier",
+        *(
+            f"{metric}_{part}"
+            for metric in (
+                "expected_ppr",
+                "snap_share",
+                "target_share",
+                "carry_share",
+                "red_zone_share",
+            )
+            for part in ("recent", "before", "change")
+        ),
+        "proj_ppr",
+        "pos_rank_ppr",
+        "matchup",
+    ),
+    "mart_projection_scorecard": (
+        "scorecard_key",
+        "season",
+        "week",
+        "position",
+        "method",
+        "kind",
+        "n",
+        "abs_error_sum",
+        "squared_error_sum",
+        "error_sum",
+        "mae",
+        "inside_count",
+        "spearman",
+    ),
+    "mart_player_game_log": (
+        "player_week_key",
+        "season",
+        "week",
+        "player_id",
+        "player_name",
+        "position",
+        "team",
+        "opponent",
+        "fantasy_points_ppr",
+        "fantasy_points_half",
+        "fantasy_points_std",
+        "passing_yards",
+        "passing_tds",
+        "passing_interceptions",
+        "rushing_yards",
+        "rushing_tds",
+        "receptions",
+        "receiving_yards",
+        "receiving_tds",
+        "fumbles_lost",
+        "two_point_conversions",
+        "special_teams_tds",
+        "targets",
+        "carries",
+        "snap_share",
+        "target_share",
+        "carry_share",
+        "expected_ppr",
+        "proj_ppr",
+        "floor_ppr",
+        "ceiling_ppr",
+        "projection_kind",
+    ),
+    "mart_backtest_summary": (
+        "metric_key",
+        "scope",
+        "position",
+        "method",
+        "method_label",
+        "n",
+        "weeks",
+        "mae",
+        "rmse",
+        "bias",
+        "spearman",
+        "interval_coverage",
+        "pool_coverage",
+    ),
+}
+MARTS = tuple(EXPORTED_COLUMNS)
+# Exported as typed NULLs: the app expects the column, but per-player FantasyPros ranks
+# are third-party content, so the public copy keeps only the accuracy comparison against
+# them (mart_backtest_summary), not the ranks themselves.
+BLANKED_COLUMNS: dict[str, dict[str, str]] = {"mart_cheat_sheet": {"ecr_rank": "INTEGER"}}
 
 
 def download_from_databricks(out_dir: Path) -> None:
@@ -79,20 +219,17 @@ def build_marts(serving_dir: Path, database: Path) -> None:
     subprocess.run(command, cwd=DBT_DIR, env=env, check=True)
 
 
-# Columns blanked in the public copy: FantasyPros rankings are third-party content, so the
-# public snapshot keeps only the accuracy comparison against them, not the ranks themselves.
-REDACTED: dict[str, tuple[str, ...]] = {"mart_cheat_sheet": ("ecr_rank",)}
-
-
 def export_marts(database: Path, out_dir: Path) -> dict[str, int]:
     """Copy each mart the app reads from a DuckDB build into Parquet files."""
     out_dir.mkdir(parents=True, exist_ok=True)
     rows = {}
     with duckdb.connect(str(database), read_only=True) as con:
-        for mart in MARTS:
+        for mart, columns in EXPORTED_COLUMNS.items():
             target = (out_dir / f"{mart}.parquet").as_posix()
-            blanked = ", ".join(f"NULL AS {column}" for column in REDACTED.get(mart, ()))
-            select = f"* REPLACE ({blanked})" if blanked else "*"
+            blanked = BLANKED_COLUMNS.get(mart, {})
+            select = ", ".join(
+                f"CAST(NULL AS {blanked[c]}) AS {c}" if c in blanked else c for c in columns
+            )
             con.execute(f"COPY (SELECT {select} FROM marts.{mart}) TO '{target}' (FORMAT PARQUET)")
             result = con.execute(f"SELECT count(*) FROM marts.{mart}").fetchone()
             rows[mart] = int(result[0]) if result else 0
