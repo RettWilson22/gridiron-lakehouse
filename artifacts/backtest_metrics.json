@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-09T00:18:08.717944+00:00",
+  "generated_at": "2026-10-09T02:08:15.768375+00:00",
   "test_seasons": [
     2023,
     2024,
@@ -9,6 +9,11 @@
     2026,
     5
   ],
+  "candidate_coverage": {
+    "player_games": 48018,
+    "share_all": 0.9609,
+    "share_10_plus_ppr": 0.9891
+  },
   "metrics": [
     {
       "scope": "2023",

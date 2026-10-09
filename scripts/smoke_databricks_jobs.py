@@ -56,8 +56,7 @@ def main(argv: list[str] | None = None) -> int:
         ).saveAsTable(f"gridiron.{name}")
 
     common = ["--catalog", "spark_catalog", "--schema", "gridiron"]
-    train = load_job("train")
-    train.main(
+    model_uri = load_job("train").run_task(
         [
             *common,
             "--experiment",
@@ -67,10 +66,13 @@ def main(argv: list[str] | None = None) -> int:
             "--skip-registration",
         ]
     )
+    if model_uri is None:
+        print("train logged no model (no upcoming week in the local data)")
+        return 1
     score = load_job("score")
-    score.main([*common, "--model-uri", str(train.LAST_MODEL_URI)])
+    score.main([*common, "--model-uri", model_uri])
     # A second score run must keep the stored live projections stable.
-    score.main([*common, "--model-uri", str(train.LAST_MODEL_URI)])
+    score.main([*common, "--model-uri", model_uri])
     publish = load_job("publish_serving")
     publish.main([*common, "--serving-schema", "gridiron_serving"])
     # Second publish exercises the refresh path (table already exists).

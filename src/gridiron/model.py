@@ -10,15 +10,15 @@ player-weeks with a similar projection: training rows are split into 20 equal-co
 of projected points per position, and the percentiles are interpolated between bin
 medians (made non-decreasing in the projection).
 
-Choices, all made on the 2022 season with 2018-2021 training data before any 2023-2025
-test data was scored:
+Design choices were made in exploratory runs on the 2022 season (trained on 2018-2021)
+before any 2023-2025 test season was scored. Those runs are not part of the repository;
+the reasons, for the record:
 
-* projecting components was as accurate as projecting PPR points directly, and is what
-  custom league scoring needs;
-* the shallow, heavily regularized settings below beat deeper trees at every position;
-* quantile gradient boosting was tried for the floor and ceiling and stalled near zero on
-  this zero-inflated target (players who sit score zero); the empirical bands cover
-  76-84% of 2022 outcomes in the evaluation pool, by position, against an 80% target.
+* projecting components was about as accurate as projecting PPR points directly, and is
+  what custom league scoring needs;
+* the shallow, heavily regularized settings below did better than deeper trees;
+* quantile gradient boosting for the floor and ceiling collapsed toward zero on this
+  zero-inflated target (players who sit score zero), so the bands are empirical.
 """
 
 from __future__ import annotations
@@ -148,7 +148,7 @@ def points(frame: pd.DataFrame, preset: str, prefix: str = "") -> pd.Series:
 
 @dataclass
 class ProjectionModel:
-    """Fitted per-position component and quantile regressors."""
+    """Fitted per-position component regressors and empirical PPR floor/ceiling bands."""
 
     features: tuple[str, ...] = FEATURES
     components: dict[str, dict[str, Estimator]] = field(default_factory=dict)

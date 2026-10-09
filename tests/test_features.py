@@ -1,8 +1,9 @@
 """Leakage tests: a feature for week w may only use information available before kickoff.
 
-Each test perturbs data that must not matter (results from week w onward, and injury
-reports or depth charts of other weeks) and checks that week-w candidates and features are
-identical; a control test checks the features do react to earlier weeks.
+Each test perturbs data that must not matter (results from week w onward, injury reports
+and depth charts of other weeks, rosters of later weeks) and checks that week-w candidates
+and features are identical; control tests check the features do react to earlier weeks and
+to the week's own roster.
 """
 
 from __future__ import annotations
@@ -87,9 +88,22 @@ def test_other_weeks_injury_reports_depth_charts_and_rosters_do_not_matter(
     depth = tables["depth_chart_week"].copy()
     depth.loc[time_key(depth) != TARGET_KEY, "depth_rank"] = 9
     rosters = tables["rosters"].copy()
-    rosters.loc[time_key(rosters) > TARGET_KEY, "position"] = "TE"
+    later = time_key(rosters) > TARGET_KEY
+    assert later.any()
+    rosters.loc[later, "position"] = "TE"
+    rosters.loc[later, "years_exp"] = 0.0
     perturbed = build(tables, injuries=injuries, depth_chart_week=depth, rosters=rosters)
     pd.testing.assert_frame_equal(baseline, perturbed)
+
+
+def test_experience_comes_from_the_weeks_own_roster(tables: dict[str, pd.DataFrame]) -> None:
+    """Control: the roster test above would notice if rosters were ignored altogether."""
+    rosters = tables["rosters"].copy()
+    rosters.loc[time_key(rosters) == TARGET_KEY, "years_exp"] = 30.0
+    listed = rosters.loc[time_key(rosters) == TARGET_KEY, fx.KEY].drop_duplicates()
+    perturbed = build(tables, rosters=rosters).merge(listed, on=fx.KEY)
+    assert not perturbed.empty
+    assert (perturbed["years_exp"] == 30.0).all()
 
 
 def test_earlier_weeks_do_change_the_features(

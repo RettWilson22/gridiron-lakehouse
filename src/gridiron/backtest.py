@@ -2,19 +2,21 @@
 
 Protocol: for each test season ``S`` the model is trained on every completed regular-season
 week of seasons before ``S`` and then projects every week of ``S``. Features for week ``w``
-only use information from before that week's games (see ``gridiron.features``), so each
-projection is what the system would have published before kickoff, using a model that was
-frozen before the season began. Retraining once per season rather than every week is
-cheaper and, if anything, conservative: the live system retrains weekly and so also learns
-from the current season's earlier weeks.
+only use information from before that week's games (see ``gridiron.features``), using a
+model that was frozen before the season began. Retraining once per season rather than
+every week is cheaper and conservative in one respect: the live system retrains weekly and
+so also learns from the current season's earlier weeks. In another respect the backtest
+sees more than a live run: its features use closing betting lines and the final injury
+report, which a Tuesday or Thursday live run does not have yet.
 
 Evaluation pool: for each position-week, the players FantasyPros ranked in the top ``N``
 of their position that week (``TOP_N``: two starters' worth per team in a 12-team
 1 QB / 2 RB / 3 WR / 1 TE league). The pool is defined by a pre-game source that is
 independent of every method being compared, and only weeks with a weekly ranking snapshot
-are scored. Within the pool, rows are scored when every method has a value (rookies before
-their first game have no baseline). Players who were active but did not record a stat
-score zero.
+are scored (the latest scrape on or before the week's last game day). Within the pool, rows
+are scored when every method has a value (rookies before their first game have no
+baseline). A projected player without a stat row for the game scores zero, whether he sat
+out or played without recording a stat (``features.attach_actuals``).
 
 Metrics per position: MAE, RMSE and bias of PPR points; Spearman rank correlation with the
 actual points, computed within each week and averaged over weeks; and for the model the
@@ -111,6 +113,31 @@ def pool_coverage(projected: pd.DataFrame, ecr: pd.DataFrame, seasons: Iterable[
     top = top[top["ecr_rank"] <= top["position"].map(TOP_N)].merge(weeks, on=["season", "week"])
     found = top.merge(projected[KEY].drop_duplicates(), on=KEY, how="left", indicator=True)
     return (found["_merge"] == "both").groupby(found["position"]).mean()
+
+
+def pooled_scope(scopes: Iterable[str]) -> str:
+    """The scope that pools every test season, e.g. ``"2023-2025"`` (seasons alone are
+    ``"2023"``): the longest scope name. The Streamlit app, which runs in Snowflake without
+    this package, applies the same rule."""
+    return max(scopes, key=lambda scope: (len(scope), scope))
+
+
+def candidate_coverage(
+    candidates: pd.DataFrame, player_week: pd.DataFrame, min_points: float = 10.0
+) -> dict[str, float]:
+    """Share of player-games with a stat row that the candidate pool included: over all
+    of them, and over those with at least ``min_points`` PPR points. Only weeks present in
+    ``candidates`` count."""
+    weeks = candidates[["season", "week"]].drop_duplicates()
+    played = player_week[[*KEY, ACTUAL]].merge(weeks, on=["season", "week"])
+    found = played.merge(candidates[KEY].drop_duplicates(), on=KEY, how="left", indicator=True)
+    covered = found["_merge"] == "both"
+    big = found[ACTUAL] >= min_points
+    return {
+        "player_games": len(found),
+        "share_all": float(covered.mean()),
+        f"share_{min_points:g}_plus_ppr": float(covered[big].mean()),
+    }
 
 
 def _spearman_by_week(pool: pd.DataFrame, prediction: pd.Series) -> tuple[float, int]:

@@ -37,7 +37,7 @@ def render() -> dict[Path, str]:
     context = "USE ROLE GRIDIRON_ADMIN;\nUSE DATABASE GRIDIRON;\nUSE WAREHOUSE GRIDIRON_WH;\n"
     return {
         ROOT / "snowflake" / "iceberg" / "02_iceberg_tables.sql": (
-            f"{HEADER}-- Iceberg path only (needs external storage; see the README):\n"
+            f"{HEADER}-- Iceberg path only (needs external storage; see docs/deploy.md):\n"
             f"-- externally managed Iceberg tables over the Unity Catalog serving tables.\n"
             f"-- Databricks stays the only writer; AUTO_REFRESH polls the catalog for\n"
             f"-- new snapshots. Run as GRIDIRON_ADMIN after 01_catalog_integration.sql.\n\n"
@@ -49,7 +49,7 @@ def render() -> dict[Path, str]:
         ),
         ROOT / "snowflake" / "sync" / "01_synced_tables.sql": (
             f"{HEADER}-- Native tables loaded by scripts/sync_to_snowflake.py (the production\n"
-            f"-- path with Databricks Free Edition; see the README).\n"
+            f"-- path with Databricks Free Edition; see docs/deploy.md).\n"
             f"-- Primary keys are informational in Snowflake; the sync MERGE enforces them.\n\n"
             f"{context}\n{tables}\n"
         ),

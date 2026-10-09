@@ -1,4 +1,4 @@
-"""Configuration for the Databricks -> Snowflake fallback sync, read from the environment.
+"""Configuration for the Databricks -> Snowflake sync, read from the environment.
 
 Secrets are only ever read from environment variables (or a key file path) and are masked
 in ``repr`` so they cannot leak into logs. Databricks auth uses ``DATABRICKS_TOKEN`` when it is

@@ -2,7 +2,7 @@
 
 This is the production path with Databricks Free Edition: its Unity Catalog Iceberg REST
 endpoint returns table metadata but no storage credentials for tables on Databricks default
-storage, so Snowflake cannot read the files in place (details in the README). For each
+storage, so Snowflake cannot read the files in place (details in docs/deploy.md). For each
 serving table the script:
 
 1. reads the table from a Databricks SQL warehouse as Arrow;

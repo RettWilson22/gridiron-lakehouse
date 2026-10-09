@@ -1,6 +1,5 @@
 # Local and CI profiles. Run dbt from this directory with --profiles-dir .
 # No secrets live here: the Snowflake target reads everything from environment variables.
-# (dbt Projects on Snowflake uses dbt_projects_profiles.yml instead; see that file.)
 gridiron:
   target: ci
   outputs:
@@ -18,12 +17,14 @@ gridiron:
       path: local.duckdb
       threads: 4
 
-    # Snowflake from a laptop (key-pair auth), as the transformer role.
+    # Snowflake from a laptop (key-pair auth), as the transformer role. The user and key
+    # default to the sync settings; set SNOWFLAKE_DBT_USER and SNOWFLAKE_DBT_PRIVATE_KEY_FILE
+    # to run as GRIDIRON_DBT (docs/deploy.md).
     snowflake:
       type: snowflake
       account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
       user: "{{ env_var('SNOWFLAKE_DBT_USER', env_var('SNOWFLAKE_USER', '')) }}"
-      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_FILE') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_DBT_PRIVATE_KEY_FILE', env_var('SNOWFLAKE_PRIVATE_KEY_FILE', '')) }}"
       role: GRIDIRON_TRANSFORMER
       warehouse: GRIDIRON_WH
       database: GRIDIRON

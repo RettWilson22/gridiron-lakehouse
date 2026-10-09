@@ -11,7 +11,7 @@ clean-targets: ["target", "dbt_packages"]
 vars:
   # Where the serving tables come from on Snowflake:
   #   synced  - native tables loaded by scripts/sync_to_snowflake.py (the working path on
-  #             Databricks Free Edition; see the README)
+  #             Databricks Free Edition; see docs/deploy.md)
   #   iceberg - views over Iceberg tables read through Unity Catalog (needs external storage)
   gold_source: synced
   # DuckDB targets only: directory of serving-table Parquet files (relative to this project).

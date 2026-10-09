@@ -1,7 +1,7 @@
 """Pure helpers that generate Snowflake SQL for the serving tables.
 
-Used by ``scripts/generate_snowflake_sql.py`` (checked-in DDL and views) and by the fallback
-sync script (MERGE statements). Nothing here opens a connection, so it is unit tested.
+Used by ``scripts/generate_snowflake_sql.py`` (checked-in DDL and views) and by the sync
+script (MERGE statements). Nothing here opens a connection, so it is unit tested.
 
 Naming convention on the Snowflake side: every serving table is exposed with unquoted,
 upper-case identifiers in both the ``ICEBERG`` (views over Iceberg tables) and ``SYNCED``
