@@ -8,6 +8,7 @@ called in dependency order against temp views built from the landing fixture.
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -118,3 +119,15 @@ def test_pipeline_datasets_build_from_upstream_views(pipeline: RecordingPipeline
         frame: DataFrame = pipeline.datasets[name]["fn"]()
         frame.createOrReplaceTempView(name)
         assert frame.count() > 0, name
+
+
+def test_job_dependencies_have_upper_bounds() -> None:
+    """Serverless installs these on every run; an unbounded spec could pull a new major."""
+    job = (PIPELINE_FILE.parent.parent / "resources" / "job.yml").read_text()
+    block = re.search(r"dependencies:\n((?:\s+- .+\n)+)", job)
+    assert block, "no dependencies in job.yml"
+    packages = [d.strip()[2:] for d in block.group(1).splitlines()]
+    assert "../../dist/*.whl" in packages  # the package itself, built by the bundle
+    for spec in packages:
+        if not spec.endswith(".whl"):
+            assert ">=" in spec and "<" in spec.replace("<=", ""), spec
