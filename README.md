@@ -18,12 +18,11 @@ consensus rankings (ECR). The honest summary: it is more accurate in points than
 last-three-games and season-to-date averages at every position, and it ranks players
 slightly worse than the experts at every position.
 
-> **Status, 2026-10-08.** The Databricks bundle, the Snowflake account objects and the
-> Databricks-to-Snowflake sync from the previous version of this repository are deployed
-> and verified (Free Edition and a Snowflake trial). The fantasy football code in this
-> version was built and run end to end on a laptop against the real data
-> ([what was run](#what-was-run-locally)); it has not been deployed yet. Everything cloud-only
-> below says "to be filled in after the cloud run".
+> **Status, 2026-10-08.** Deployed and running end to end on Databricks Free Edition and a
+> Snowflake trial: the weekly Databricks job, the sync into Snowflake, dbt, the scoring UDF,
+> the stream and task, and the Streamlit in Snowflake app. Cloud numbers are in
+> [Cloud results](#cloud-results); the backtest was also run locally
+> ([what was run](#what-was-run-locally)).
 
 ## Why both platforms?
 
@@ -117,7 +116,8 @@ integration, generated Iceberg tables and upper-case views) and
 `--vars '{gold_source: iceberg}'`. The serving tables are still published with
 `delta.enableIcebergCompatV2`, `delta.universalFormat.enabledFormats = iceberg`,
 `delta.columnMapping.mode = name` and deletion vectors off, created once and refreshed with
-`INSERT OVERWRITE` so their catalog identity is stable. That path has not been run.
+`INSERT OVERWRITE` so their catalog identity is stable. On Free Edition this path stops at
+credential vending (above), so it has not been run end to end.
 
 ## Data sources
 
@@ -259,9 +259,20 @@ The same record is rebuilt in SQL by dbt (`mart_projection_scorecard`) from the 
 projections, and a dbt test checks it reproduces the Python numbers (sample sizes, MAE and
 interval coverage) on the full data.
 
-**Cloud results**: to be filled in after the cloud run (pipeline and job run times on
-serverless, the MLflow run and registered model version, Snowflake query and task timings,
-credits used).
+### Cloud results
+
+First production run, 2026-10-08 (Databricks Free Edition, serverless; Snowflake trial,
+AWS us-east-2):
+
+| Step | Result |
+|---|---|
+| Databricks job `gridiron-refresh` | 12.2 min end to end: ingest 1.5, pipeline 3.5, train 4.7, score 1.4, publish 1.0 |
+| Model | `workspace.gridiron.fantasy_projection` v1 registered in Unity Catalog with alias `champion` |
+| Scored | 28,396 backtest projections, 539 live projections for 2026 week 5, 529 risers |
+| Sync to Snowflake | 6 tables, row counts identical to Databricks (largest: `player_week`, 48,018 rows) |
+| dbt on Snowflake | 55 of 55 models and tests pass, including the check that SQL reproduces the Python backtest |
+| Stream + task | first run backfilled 27,857 projected-vs-actual rows in 3.1 s |
+| Snowflake credits | about 1.4 credits for the whole build and testing session |
 
 ## What was run locally
 
@@ -399,14 +410,13 @@ Snowflake could run them.
 * **Databricks Free Edition** has no charges and a daily fair-use compute quota. The job uses
   serverless compute only, one pipeline (Free Edition allows one per type) and five tasks
   run one at a time (it allows five concurrent tasks). Locally the model step takes about a
-  minute; three runs a week is modest, but serverless timings are to be filled in after the
-  cloud run.
+  minute; on serverless the full weekly job took 12.2 minutes.
 * **Snowflake trial**: one X-Small warehouse (1 credit per hour while running) with
   `AUTO_SUSPEND = 60`, under a resource monitor that notifies at 50% and 80% of 20 credits a
   month and suspends the warehouse at 100%. The task runs on that warehouse, so the monitor
   covers it, and its `WHEN SYSTEM$STREAM_HAS_DATA` clause skips runs (and warehouse starts)
   when nothing changed. A Streamlit app keeps the warehouse running while it is open. Credits
-  used: to be filled in after the cloud run.
+  used: about 1.4 for the first deployment and a day of testing.
 
 ## Limitations
 
@@ -431,22 +441,17 @@ Snowflake could run them.
 * **Phone layout** uses Streamlit's responsive defaults (one-column stacking, compact tables)
   and was checked headlessly, not on a device.
 
-Unverified on the cloud (built to the documented APIs, checked locally only):
+Checked on the cloud in the first production run (2026-10-08):
 
-* the new pipeline on serverless: eleven Auto Loader bronze tables, including depth charts
-  whose two formats arrive in one folder (schemas merge at inference; the landing type
-  normalization is there to keep them consistent), and `make_timestamp` with a time zone;
-* MLflow pyfunc logging with `code_paths`, Unity Catalog registration and loading the model
-  by alias on serverless (the previous version registered a plain scikit-learn model);
-* whether Free Edition can download from `raw.githubusercontent.com` (the DynastyProcess
-  files; GitHub release downloads are known to work). Those two datasets are optional after
-  their first landing, but the first run needs them; if it cannot reach them, land them from
-  a laptop with `make ingest` and copy `data/landing/ecr` and `data/landing/player_ids` to the
-  volume;
-* whether removing the old datasets from the pipeline drops their tables (if they remain,
-  drop them by hand);
-* every Snowflake script in this version, including the UDF's handling of `OBJECT` values,
-  the task, and the app on Streamlit in Snowflake.
+* the pipeline on serverless, including all eleven Auto Loader bronze tables and depth charts
+  in both formats;
+* MLflow pyfunc logging with `code_paths`, Unity Catalog registration and the `champion`
+  alias;
+* Free Edition can download from both GitHub releases and `raw.githubusercontent.com`;
+* removing datasets from the pipeline does **not** drop their tables; the old ones were
+  dropped by hand;
+* every Snowflake script in this version, including the scoring UDF, the stream and task,
+  and the app on Streamlit in Snowflake.
 
 ## Repository layout
 
