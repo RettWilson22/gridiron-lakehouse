@@ -40,7 +40,9 @@ Also confirmed in the cloud:
   ([details](deploy.md#the-iceberg-path-workspaces-with-external-storage)), so its SQL has
   not been run end to end.
 
-Changed since that deployment and not yet deployed, all checked locally (below):
+Deployed in two further production runs on 2026-10-09 (the second took 24.6 minutes, 17.7 of
+them in the train task because every model refit once for the new ranges), all also checked
+locally (below):
 
 * Databricks: the years-of-experience feature fix (identical outputs), gradient-boosting
   early stopping switched off (new numbers), refits skipped when the training data is
