@@ -3,10 +3,11 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.ensemble import HistGradientBoostingRegressor
 
 from gridiron.backtest import completed
 from gridiron.features import COMPONENTS
-from gridiron.model import POSITION_COMPONENTS, Band, ProjectionModel
+from gridiron.model import POSITION_COMPONENTS, Band, ProjectionModel, _fit_component
 from gridiron.workflow import Prepared
 
 
@@ -46,6 +47,34 @@ def test_model_records_what_it_was_trained_on(
     model, _ = fitted
     assert model.trained_through == (2025, 4)
     assert set(model.training_rows) == {"QB", "RB", "WR", "TE"}
+
+
+def test_every_fitted_estimator_has_early_stopping_off(
+    fitted: tuple[ProjectionModel, pd.DataFrame],
+) -> None:
+    model, _ = fitted
+    boosted = [
+        estimator
+        for estimators in model.components.values()
+        for estimator in estimators.values()
+        if isinstance(estimator, HistGradientBoostingRegressor)
+    ]
+    assert boosted
+    for estimator in boosted:
+        assert estimator.early_stopping is False
+        assert estimator.random_state == 0
+        assert not estimator.do_early_stopping_
+
+
+def test_large_training_sets_do_not_switch_early_stopping_on() -> None:
+    # scikit-learn's default ("auto") holds out a random 10% and stops early above 10,000
+    # rows, so the setting would flip between positions and backtest seasons.
+    rng = np.random.default_rng(0)
+    x = pd.DataFrame(rng.normal(size=(10_500, 3)), columns=["a", "b", "c"])
+    y = pd.Series(x["a"] * 2 + rng.normal(size=len(x)))
+    estimator = _fit_component("rushing_yards", x, y)
+    assert not estimator.do_early_stopping_
+    assert estimator.n_iter_ == estimator.max_iter
 
 
 def test_band_is_monotone_and_interpolates() -> None:
