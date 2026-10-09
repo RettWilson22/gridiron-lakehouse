@@ -20,6 +20,7 @@ include:
 
 # Build the shared package as a wheel on deploy; jobs and the pipeline install the wheel.
 # (Serverless compute can't do an editable install straight from workspace files.)
+# Every wheel in dist/ is installed, so clear it before deploying (make bundle-deploy does).
 artifacts:
   gridiron:
     type: whl
