@@ -1,5 +1,5 @@
 -- 02_projection_results_dynamic_table.sql
--- Iceberg path only (needs external storage; see the README). Run as GRIDIRON_ADMIN.
+-- Iceberg path only (needs external storage; see docs/deploy.md). Run as GRIDIRON_ADMIN.
 -- The equivalent of the stream + task when Snowflake reads the serving tables through
 -- Iceberg: Databricks rewrites each serving table on every run (INSERT OVERWRITE), so there
 -- is no useful row-level change feed, and a declarative full refresh once a day fits.

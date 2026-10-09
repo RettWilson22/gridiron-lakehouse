@@ -159,7 +159,7 @@ class DuckDBSource:
 
 class SnapshotSource(DuckDBSource):
     name = "public"
-    description = "static weekly snapshot (public copy)"
+    description = "static snapshot, refreshed by hand (public copy)"
 
     def __init__(self, directory: Path) -> None:
         super().__init__()

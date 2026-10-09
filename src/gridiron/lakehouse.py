@@ -14,8 +14,8 @@ from pyspark.sql import DataFrame, SparkSession
 
 from gridiron import quality, transforms
 
-# Landed dataset -> bronze table name. Play-by-play keeps the table name it had before
-# the other datasets were added, so its Auto Loader checkpoint carries over.
+# Landed dataset -> bronze table name: ``bronze_<dataset>``, except play-by-play, which
+# lands as ``pbp`` and is stored as ``bronze_plays`` to match its silver table ``plays``.
 BRONZE_TABLES: dict[str, str] = {
     "pbp": "bronze_plays",
     "player_stats": "bronze_player_stats",
@@ -53,9 +53,10 @@ def read_landing(spark: SparkSession, landing_root: Path) -> dict[str, DataFrame
         files = sorted(str(p) for p in (landing_root / name).rglob("*.parquet"))
         if not files:
             raise FileNotFoundError(f"nothing landed for {name} under {landing_root}")
-        # Play-by-play files have one column whose type drifts between seasons; silver
-        # never reads it, and merging schemas would fail on it. Every other dataset is
-        # type-normalized at landing, so its schemas merge cleanly.
+        # Play-by-play is landed without type widening (see ``datasets.DATASETS``) and has
+        # a column whose type differs between seasons; silver never reads it, but merging
+        # schemas would fail on it, so it is read without mergeSchema. Every other dataset
+        # is type-normalized at landing, so its schemas merge cleanly.
         reader = spark.read.option("mergeSchema", str(name != "pbp").lower())
         bronze[name] = transforms.with_ingest_metadata(reader.parquet(*files))
     return bronze

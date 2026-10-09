@@ -85,8 +85,9 @@ GRANT SELECT ON FUTURE TABLES IN SCHEMA GRIDIRON.APP TO ROLE GRIDIRON_READER;
 GRANT SELECT ON FUTURE VIEWS IN SCHEMA GRIDIRON.APP TO ROLE GRIDIRON_READER;
 GRANT USAGE ON FUTURE FUNCTIONS IN SCHEMA GRIDIRON.APP TO ROLE GRIDIRON_READER;
 
--- Service user for the fallback sync, using key-pair authentication.
--- Generate a key pair locally (see README) and paste the public key body below.
+-- Service users for the sync and for dbt. Service users cannot log in with a password;
+-- each gets its own key pair. Generate the keys locally and set each public key with the
+-- commented ALTER USER statements (steps in docs/deploy.md, "Key pairs").
 CREATE USER IF NOT EXISTS GRIDIRON_SYNC
   TYPE = SERVICE
   DEFAULT_ROLE = GRIDIRON_LOADER
@@ -94,3 +95,11 @@ CREATE USER IF NOT EXISTS GRIDIRON_SYNC
   COMMENT = 'Databricks -> Snowflake sync of the serving tables';
 -- ALTER USER GRIDIRON_SYNC SET RSA_PUBLIC_KEY = '<PUBLIC_KEY_BODY>';
 GRANT ROLE GRIDIRON_LOADER TO USER GRIDIRON_SYNC;
+
+CREATE USER IF NOT EXISTS GRIDIRON_DBT
+  TYPE = SERVICE
+  DEFAULT_ROLE = GRIDIRON_TRANSFORMER
+  DEFAULT_WAREHOUSE = GRIDIRON_WH
+  COMMENT = 'dbt builds of STAGING and MARTS';
+-- ALTER USER GRIDIRON_DBT SET RSA_PUBLIC_KEY = '<PUBLIC_KEY_BODY>';
+GRANT ROLE GRIDIRON_TRANSFORMER TO USER GRIDIRON_DBT;

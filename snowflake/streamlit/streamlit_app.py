@@ -193,12 +193,18 @@ def week_sheet(position: str) -> pd.DataFrame:
     return out
 
 
+def scope_order(scope: str) -> tuple[int, str]:
+    """Sort key for backtest scopes: the pooled scope ("2023-2025") has the longest name,
+    so it sorts last. Same rule as ``gridiron.backtest.pooled_scope``."""
+    return len(scope), scope
+
+
 def headline_numbers() -> dict[str, str]:
-    """The backtest in three numbers, from the longest backtest scope."""
+    """The backtest in three numbers, from the pooled backtest scope."""
     summary = run("select * from marts.mart_backtest_summary")
     if summary.empty:
         return {}
-    scope = max(summary["scope"].unique(), key=lambda s: (len(s), s))
+    scope = max(summary["scope"].unique(), key=scope_order)
     rows = summary[summary["scope"] == scope].pivot_table(
         index="position", columns="method", values=["mae", "n"]
     )
@@ -445,7 +451,7 @@ with risers_tab:
 
 with record_tab:
     summary = run("select * from marts.mart_backtest_summary order by scope, position, method")
-    scopes = sorted(summary["scope"].unique(), key=lambda s: (len(s), s), reverse=True)
+    scopes = sorted(summary["scope"].unique(), key=scope_order, reverse=True)
     scope = st.selectbox("Backtest seasons", scopes, key="scope")
     chosen_scope = summary[summary["scope"] == scope]
     pivot = chosen_scope.pivot_table(index="position", columns="method", values=["mae", "spearman"])
@@ -478,7 +484,7 @@ with record_tab:
         "ranked in the top 24 QBs, 48 RBs, 72 WRs and 24 TEs that week. MAE is in PPR "
         "points (lower is better); rank correlation is Spearman's, within each week "
         "(higher is better). Expert rankings have no point values, so they are only "
-        "compared on ranking. An honest 80% range should contain about 80% of outcomes."
+        "compared on ranking. A calibrated 80% range should contain about 80% of outcomes."
     )
 
     weekly = run(

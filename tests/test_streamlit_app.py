@@ -121,5 +121,5 @@ def test_public_mode_reads_an_exported_snapshot(
     test = AppTest.from_file(str(PUBLIC_APP), default_timeout=120)
     test.run()
     assert not test.exception
-    assert "static weekly snapshot" in " ".join(c.value for c in test.sidebar.caption)
+    assert "static snapshot" in " ".join(c.value for c in test.sidebar.caption)
     assert not sheet(test).empty

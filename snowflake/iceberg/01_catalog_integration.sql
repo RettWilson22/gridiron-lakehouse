@@ -4,7 +4,7 @@
 -- SCHEMA is not applicable, and the Unity Catalog Iceberg REST endpoint returns table
 -- metadata but no vended storage credentials for tables on Databricks default storage, so
 -- Snowflake cannot read the data files. Free Edition uses the sync instead
--- (snowflake/sync/ and scripts/sync_to_snowflake.py). Kept, and documented in the README,
+-- (snowflake/sync/ and scripts/sync_to_snowflake.py). Kept, and documented in docs/deploy.md,
 -- for paid workspaces whose serving schema lives on external storage.
 --
 -- Run as ACCOUNTADMIN. Connects Snowflake to Databricks Unity Catalog's Iceberg REST

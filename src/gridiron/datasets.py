@@ -62,10 +62,9 @@ class Dataset:
 DATASETS: Final[dict[str, Dataset]] = {
     d.name: d
     for d in (
-        # The play-by-play landing folder is shared with the earlier version of this
-        # project, so files already in the volume are reused rather than downloaded again.
-        # Play-by-play keeps its raw types: its bronze table predates type normalization and
-        # already holds every season, and none of the columns silver uses drift in type.
+        # Play-by-play is landed as published, without type widening: silver reads only
+        # 20 of its columns (``transforms.PLAY_COLUMNS``), and none of those change type
+        # between seasons.
         Dataset(
             "pbp",
             f"{NFLVERSE}/pbp/play_by_play_{{season}}.parquet",

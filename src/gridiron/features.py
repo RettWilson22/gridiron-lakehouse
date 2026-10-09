@@ -9,7 +9,8 @@ Leakage rules, enforced by construction and by tests (``tests/test_features.py``
   sees games from earlier weeks, never week ``w`` itself or anything later.
 * Week-``w`` inputs are limited to what is published before the game: the schedule and
   betting lines, the depth chart as published for the week (``depth_chart_week`` already
-  applies the before-kickoff cut for snapshot charts), and that week's final injury report.
+  applies the before-kickoff cut for snapshot charts), that week's final injury report, and
+  the roster as of that week (position and years of experience; never a later listing).
 * The candidate pool is decided before kickoff too: players on the week's depth chart plus
   players who played for the team in its previous two games, minus anyone ruled Out.
 """
@@ -374,6 +375,25 @@ def matchup_table(defense_vs_position: pd.DataFrame, weeks: pd.DataFrame) -> pd.
     return table
 
 
+def roster_experience(rosters: pd.DataFrame, rows: pd.DataFrame) -> pd.DataFrame:
+    """Years of experience for each ``rows`` player-week, from his latest roster row in the
+    same season at or before that week (never a later week's listing)."""
+    listed = rosters[["player_id", "season", "week", "years_exp"]].dropna()
+    listed = listed.assign(**{TIME: time_key(listed)}).sort_values(TIME, kind="stable")
+    wanted = rows[KEY].drop_duplicates()
+    wanted = wanted.assign(**{TIME: time_key(wanted)}).sort_values(TIME, kind="stable")
+    merged = pd.merge_asof(
+        wanted,
+        listed.rename(columns={"season": "roster_season", "week": "roster_week"}),
+        on=TIME,
+        by="player_id",
+        direction="backward",
+    )
+    same_season = merged["roster_season"] == merged["season"]
+    merged["years_exp"] = merged["years_exp"].where(same_season)
+    return merged[[*KEY, "years_exp"]]
+
+
 def build_features(candidates: pd.DataFrame, tables: Mapping[str, pd.DataFrame]) -> pd.DataFrame:
     """Candidates plus every model feature (see ``FEATURES``).
 
@@ -409,10 +429,7 @@ def build_features(candidates: pd.DataFrame, tables: Mapping[str, pd.DataFrame])
         how="left",
     )
 
-    experience = (
-        tables["rosters"].groupby(["player_id", "season"], as_index=False)["years_exp"].min()
-    )
-    frame = frame.merge(experience, on=["player_id", "season"], how="left")
+    frame = frame.merge(roster_experience(tables["rosters"], frame), on=KEY, how="left")
     frame["years_exp"] = frame["years_exp"].fillna(frame["season"] - frame["rookie_season"])
     frame["rookie"] = (frame["years_exp"] == 0).astype("int64")
     season_start = pd.to_datetime(frame["season"].astype(str) + "-09-01")
@@ -423,7 +440,8 @@ def build_features(candidates: pd.DataFrame, tables: Mapping[str, pd.DataFrame])
 
 
 def attach_actuals(features: pd.DataFrame, player_week: pd.DataFrame) -> pd.DataFrame:
-    """Add what actually happened: stat components and points (zero if the player sat)."""
+    """Add what actually happened: stat components and points. A candidate without a stat
+    row for the game (inactive, or active without recording a stat) scores zero."""
     actual_columns = [
         *COMPONENTS,
         "fantasy_points_ppr",

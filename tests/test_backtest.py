@@ -87,3 +87,32 @@ def test_walk_forward_trains_only_on_earlier_seasons(
     assert set(projected["model_version"]) == {"walk-forward-2025", "walk-forward-2026"}
     assert projected[projected["season"] == 2026]["week"].max() == 2
     assert projected["is_final"].all()
+
+
+def test_pooled_scope_is_the_multi_season_scope() -> None:
+    projected, ecr = synthetic()
+    later = projected.assign(season=2025)
+    metrics = bt.evaluate(
+        pd.concat([projected, later]), pd.concat([ecr, ecr.assign(season=2025)]), [2024, 2025]
+    )
+    assert sorted(metrics["scope"].unique()) == ["2024", "2024-2025", "2025"]
+    assert bt.pooled_scope(metrics["scope"]) == "2024-2025"
+    assert bt.pooled_scope(["2023", "2023-2025", "2024", "2025"]) == "2023-2025"
+
+
+def test_candidate_coverage_counts_player_games_in_the_pool() -> None:
+    candidates = pd.DataFrame(
+        {"season": 2024, "week": 1, "player_id": ["a", "b", "c"], "position": "WR"}
+    )
+    player_week = pd.DataFrame(
+        {
+            "season": 2024,
+            "week": [1, 1, 1, 1, 2],
+            "player_id": ["a", "b", "x", "y", "a"],
+            "fantasy_points_ppr": [12.0, 3.0, 15.0, 0.5, 20.0],
+        }
+    )
+    coverage = bt.candidate_coverage(candidates, player_week)
+    assert coverage["player_games"] == 4  # week 2 has no candidates and is not counted
+    assert coverage["share_all"] == pytest.approx(0.5)
+    assert coverage["share_10_plus_ppr"] == pytest.approx(0.5)

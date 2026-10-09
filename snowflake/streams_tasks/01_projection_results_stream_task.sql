@@ -74,7 +74,7 @@ BEGIN
   WHERE r.SEASON = c.SEASON AND r.WEEK = c.WEEK;
 
   -- Every projection for a finished game, scored against the actual result (zero for a
-  -- player who was active but did not record a stat).
+  -- projected player without a stat row: inactive, or active without recording a stat).
   INSERT INTO APP.PROJECTION_RESULTS
   SELECT
     p.SEASON, p.WEEK, p.PLAYER_ID, p.PLAYER_NAME, p.POSITION, p.TEAM, p.KIND,

@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from gridiron import backtest as bt
 from gridiron.workflow import (
     DEFAULT_TEST_SEASONS,
     prepare,
@@ -77,14 +78,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{name}: {len(frame)} rows")
 
     args.metrics_out.parent.mkdir(parents=True, exist_ok=True)
+    coverage = bt.candidate_coverage(prepared.frame, prepared.tables["player_week"])
     report = {
         "generated_at": now.isoformat(),
         "test_seasons": args.test_seasons,
         "upcoming_week": prepared.upcoming,
+        "candidate_coverage": {k: round(v, 4) for k, v in coverage.items()},
         "metrics": json.loads(metrics.round(4).to_json(orient="records")),
     }
     args.metrics_out.write_text(json.dumps(report, indent=2) + "\n")
-    print(metrics[metrics["scope"] == metrics["scope"].max()].round(3).to_string(index=False))
+    print(f"candidate pool coverage: {coverage}")
+    pooled = metrics[metrics["scope"] == bt.pooled_scope(metrics["scope"])]
+    print(pooled.round(3).to_string(index=False))
     print(f"finished in {time.monotonic() - started:.0f}s")
     return 0
 

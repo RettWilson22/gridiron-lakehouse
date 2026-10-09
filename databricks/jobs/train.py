@@ -20,6 +20,7 @@ import pandas as pd
 from mlflow.tracking import MlflowClient
 from pyspark.sql import SparkSession
 
+from gridiron import backtest as bt
 from gridiron import registry
 from gridiron.features import FEATURES
 from gridiron.model import HGB_PARAMS
@@ -27,8 +28,6 @@ from gridiron.spark_io import read_table, write_table
 from gridiron.workflow import DEFAULT_TEST_SEASONS, prepare, run_backtest, train_live, upcoming_rows
 
 MODEL_NAME = "fantasy_projection"
-# URI of the model logged by the last call to main(), for local smoke runs.
-LAST_MODEL_URI: str | None = None
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -49,7 +48,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:
+def run_task(argv: list[str] | None = None) -> str | None:
+    """Run the task. Returns the logged model's URI, or None if there is no upcoming week."""
     args = parse_args(argv)
     spark = SparkSession.builder.getOrCreate()
     spark.conf.set("spark.sql.session.timeZone", "UTC")
@@ -67,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if prepared.upcoming is None:
         print("no upcoming regular-season week; nothing to train for")
-        return 0
+        return None
     model = train_live(prepared)
 
     if not args.skip_registration:
@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
                 **{f"training_rows_{p}": n for p, n in model.training_rows.items()},
             }
         )
-        pooled = metrics[metrics["scope"].str.contains("-")]  # e.g. "2023-2025"
+        pooled = metrics[metrics["scope"] == bt.pooled_scope(metrics["scope"])]
         for row in pooled.itertuples():
             for metric in ("mae", "rmse", "spearman", "interval_coverage"):
                 value = getattr(row, metric)
@@ -101,14 +101,17 @@ def main(argv: list[str] | None = None) -> int:
             upcoming_rows(prepared),
             None if args.skip_registration else registered_name,
         )
-        global LAST_MODEL_URI  # noqa: PLW0603 - read by scripts/smoke_databricks_jobs.py
-        LAST_MODEL_URI = info.model_uri
         if not args.skip_registration:
             version = info.registered_model_version
             MlflowClient().set_registered_model_alias(registered_name, "champion", version)
             print(f"run {run.info.run_id}: registered {registered_name} v{version} as champion")
         else:
             print(f"run {run.info.run_id}: logged {info.model_uri}")
+    return str(info.model_uri)
+
+
+def main(argv: list[str] | None = None) -> int:
+    run_task(argv)
     return 0
 
 
