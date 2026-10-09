@@ -38,9 +38,9 @@ wide.
 Numbers are from the local `make model-local` run of 2026-10-09, saved in
 [`artifacts/backtest_metrics.json`](artifacts/backtest_metrics.json) and
 [`artifacts/backtest_intervals.json`](artifacts/backtest_intervals.json). The app and the
-public snapshot show the 2026-10-09 Databricks run, made before the floor and ceiling
-change, so their ranges are the old ones and their model numbers differ slightly; they
-will match after the next deploy and job run. The intervals are not in the app. Method,
+public snapshot show the 2026-10-09 Databricks run, which uses the same method but trains
+its own model, so its numbers differ by at most 0.026 MAE, 0.010 rank correlation and 2.1
+points of coverage. The intervals are not in the app. Method,
 per-season results and caveats: [docs/methodology.md](docs/methodology.md).
 
 ## What this demonstrates

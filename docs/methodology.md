@@ -8,12 +8,11 @@ stopping was switched off and the floor and ceiling were moved to out-of-fold pr
 intervals are in [`artifacts/backtest_intervals.json`](../artifacts/backtest_intervals.json).
 
 The app's Track record tab and the public snapshot show the Databricks run of 2026-10-09
-instead, which was made before the floor and ceiling change. The sample sizes, baselines
-and expert rankings are identical. The cloud model is trained separately, so its MAE
-differs by at most 0.026 and its rank correlation by at most 0.010, and its ranges are the
-old ones (77.5-83.8% inside the 10th-90th range over the three seasons). The app will show
-the current method after the next deploy and job run. The intervals are only in the
-artifact, not in the app.
+instead, which uses the same method (out-of-fold ranges included). The sample sizes,
+baselines and expert rankings are identical. The cloud model is trained separately, so its
+MAE differs by at most 0.026, its rank correlation by at most 0.010 and its 10th-90th
+coverage by at most 2.1 points (pooled 2023-2025 in the cloud: QB 80.8%, RB 85.1%, WR 85.4%,
+TE 81.2%). The intervals are only in the artifact, not in the app.
 
 ## Data sources
 
