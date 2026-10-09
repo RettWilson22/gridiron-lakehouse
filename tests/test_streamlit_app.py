@@ -276,3 +276,9 @@ def test_third_party_names_render_as_text(tmp_path: Path, monkeypatch: pytest.Mo
     for text in rendered_text(test):
         unescaped = text.replace("\\<", "").replace("\\[", "").replace("\\(", "")
         assert "<iframe" not in unescaped and "](https://evil" not in unescaped, text
+
+
+def test_search_boxes_stop_at_sixty_characters(app: AppTest) -> None:
+    assert app.text_input(key="search").max_chars == 60
+    open_section(app, "Player index")
+    assert app.text_input(key="index_query").max_chars == 60

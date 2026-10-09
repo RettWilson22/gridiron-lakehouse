@@ -76,6 +76,12 @@ NICKNAMES: dict[str, str] = {
     "melt": "drake london",
 }
 
+# Limits on what a search reads, so a huge paste cannot tie up the app: every name word is
+# compared with every player, with a fuzzy match for each. The search boxes also stop at
+# MAX_QUERY_CHARS characters, but the limit is enforced here, server side.
+MAX_QUERY_CHARS = 60
+MAX_NAME_TERMS = 4
+
 # Match strength, highest first. Ties are broken by how relevant the player is this week.
 EXACT, NICKNAME, INITIALS, PREFIX, SUBSTRING = 100.0, 95.0, 90.0, 80.0, 70.0
 FUZZY_FLOOR, FUZZY_MIN_RATIO = 50.0, 0.78
@@ -156,8 +162,12 @@ def index_letter(name: str) -> str:
 
 
 def parse_query(raw: str) -> Query:
-    """Pull team and position words out of the query; what remains is the name."""
-    text = normalize(raw)
+    """Pull team and position words out of the query; what remains is the name.
+
+    Reads at most ``MAX_QUERY_CHARS`` characters and keeps at most ``MAX_NAME_TERMS``
+    name words.
+    """
+    text = normalize(raw[:MAX_QUERY_CHARS])
     teams: set[str] = set()
     for code, words in TEAMS.items():
         for word in sorted(words, key=len, reverse=True):
@@ -173,7 +183,7 @@ def parse_query(raw: str) -> Query:
         if code in TEAMS and (code not in AMBIGUOUS_CODES or only_token):
             teams.add(code)
             tokens.remove(token)
-    return Query(tuple(tokens), frozenset(teams), frozenset(positions))
+    return Query(tuple(tokens[:MAX_NAME_TERMS]), frozenset(teams), frozenset(positions))
 
 
 def _token_ratio(term: str, tokens: list[str]) -> float:

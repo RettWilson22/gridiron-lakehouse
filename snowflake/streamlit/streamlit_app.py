@@ -411,7 +411,10 @@ def cheat_sheet_section() -> None:
     position = str(st.radio("Position", POSITIONS, horizontal=True, key="position"))
     sheet = position_sheet(position)
     search = st.text_input(
-        "Find a player", key="search", placeholder="Name, initials or a close spelling"
+        "Find a player",
+        key="search",
+        placeholder="Name, initials or a close spelling",
+        max_chars=player_search.MAX_QUERY_CHARS,
     )
     show_all = st.toggle("Show every projected player", key="show_all")
     view = sheet if show_all else sheet[sheet["rank"] <= POOL[position]]
@@ -572,6 +575,7 @@ def player_index_section() -> None:
         "Search the player index",
         key="index_query",
         placeholder="Try: cmc, jsn, mccaffery, jefferson justin, lions wr, chiefs rb",
+        max_chars=player_search.MAX_QUERY_CHARS,
     )
     st.caption(
         "Finds players by full or partial name, last name first, initials, common nicknames "

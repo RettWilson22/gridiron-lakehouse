@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from gridiron.player_search import (
+    MAX_QUERY_CHARS,
     Player,
     did_you_mean,
     index_letter,
@@ -108,3 +111,23 @@ def test_no_match_and_did_you_mean() -> None:
     assert names("") == []
     assert did_you_mean(PLAYERS, "jared gof") == "Jared Goff"
     assert did_you_mean(PLAYERS, "qqqqqq") is None
+
+
+def test_a_query_keeps_at_most_sixty_characters_and_four_name_words() -> None:
+    assert parse_query("x" * 100).terms == ("x" * MAX_QUERY_CHARS,)
+    assert parse_query("a b c d e f lions wr").terms == ("a", "b", "c", "d")
+
+
+def test_a_huge_query_returns_quickly() -> None:
+    first = ["Justin", "Jared", "Josh", "Chris", "Sam", "Amon-Ra", "Kenneth", "Marvin"]
+    last = ["Jefferson", "Goff", "Allen", "Olave", "LaPorta", "Brown", "Walker", "Harrison"]
+    teams = ["DET", "MIN", "BUF", "NO", "SF", "PHI", "KC", "ARI"]
+    names = [f"{given} {family}" for given in first for family in last for _ in range(8)]
+    universe = [  # 512 players
+        Player(str(i), f"{name}{i}", "WR", teams[i % len(teams)]) for i, name in enumerate(names)
+    ]
+    query = ("jefferson justin mccaffery " * 2000)[:50_000]  # 50 KB pasted into the box
+    started = time.perf_counter()
+    search(universe, query)
+    did_you_mean(universe, query)
+    assert time.perf_counter() - started < 0.5
