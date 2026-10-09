@@ -6,7 +6,15 @@ import pandas as pd
 import pytest
 
 from gridiron.projections import PROJECTION_COLUMNS
-from gridiron.workflow import Prepared, publish, run_backtest, score_live, train_live
+from gridiron.workflow import (
+    Prepared,
+    prepare,
+    publish,
+    run_backtest,
+    score_live,
+    train_live,
+    upcoming_rows,
+)
 
 NOW = pd.Timestamp("2026-10-08 12:00", tz="UTC")
 
@@ -68,3 +76,28 @@ def test_live_rows_are_stable_when_the_job_runs_again(
         return frame.astype(object).where(frame.notna(), None)
 
     pd.testing.assert_frame_equal(normalized(again), normalized(outputs["live"]))
+
+
+def test_preparing_only_the_upcoming_week_gives_the_same_rows(
+    prepared: Prepared, tables: dict[str, pd.DataFrame]
+) -> None:
+    upcoming = prepare(lambda name: tables[name].copy(), weeks="upcoming")
+    assert upcoming.upcoming == prepared.upcoming
+    expected = upcoming_rows(prepared).reset_index(drop=True)
+    got = upcoming.frame.reset_index(drop=True)
+    # An integer column can stay integer when the week has no missing values; the model
+    # casts every feature to float64, and the published columns keep their types.
+    pd.testing.assert_frame_equal(got, expected, check_dtype=False)
+    published = [c for c in PROJECTION_COLUMNS if c in expected]
+    assert list(got[published].dtypes) == list(expected[published].dtypes)
+
+
+def test_preparing_the_upcoming_week_in_the_offseason_gives_no_rows(
+    tables: dict[str, pd.DataFrame],
+) -> None:
+    team_week = tables["team_week"].assign(is_final=True)
+    offseason = prepare(
+        lambda name: team_week if name == "team_week" else tables[name].copy(), weeks="upcoming"
+    )
+    assert offseason.upcoming is None
+    assert offseason.frame.empty
