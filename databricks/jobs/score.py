@@ -45,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     def table(name: str) -> str:
         return f"{args.catalog}.{args.schema}.{name}"
 
-    prepared = prepare(lambda name: read_table(spark, table(name)))
+    prepared = prepare(lambda name: read_table(spark, table(name)), weeks="upcoming")
     existing = (
         read_table(spark, table("live_projections"))
         if spark.catalog.tableExists(table("live_projections"))

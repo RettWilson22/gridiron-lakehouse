@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 
 import pandas as pd
 
@@ -38,23 +38,36 @@ DEFAULT_TEST_SEASONS: Final = (2023, 2024, 2025)
 
 @dataclass
 class Prepared:
-    """Feature rows for every completed week plus the upcoming week."""
+    """Feature rows for every completed week plus the upcoming week (or for the upcoming
+    week only; see ``prepare``)."""
 
     frame: pd.DataFrame
     upcoming: tuple[int, int] | None
     tables: dict[str, pd.DataFrame]
 
 
-def prepare(read: Callable[[str], pd.DataFrame]) -> Prepared:
+def prepare(
+    read: Callable[[str], pd.DataFrame], weeks: Literal["all", "upcoming"] = "all"
+) -> Prepared:
+    """Read the input tables and build feature rows.
+
+    ``weeks="all"`` builds every completed week and the upcoming week (training and the
+    backtest need them); ``weeks="upcoming"`` only the upcoming week, which is all the
+    score task projects. Features of a row never depend on other rows, so the upcoming
+    week's rows are the same either way.
+    """
     tables = {name: read(name) for name in INPUT_TABLES}
     team_week = tables["team_week"]
     upcoming = upcoming_week(team_week)
-    weeks = set(
-        map(tuple, team_week.loc[team_week["is_final"].astype(bool), ["season", "week"]].to_numpy())
-    )
+    wanted: set[tuple[int, int]] = set()
+    if weeks == "all":
+        final = team_week.loc[team_week["is_final"].astype(bool), ["season", "week"]]
+        wanted = {(int(s), int(w)) for s, w in final.to_numpy()}
     if upcoming is not None:
-        weeks.add(upcoming)
-    candidates = fx.build_candidates(tables, weeks=sorted((int(s), int(w)) for s, w in weeks))
+        wanted.add(upcoming)
+    if not wanted:
+        return Prepared(pd.DataFrame(), upcoming, tables)
+    candidates = fx.build_candidates(tables, weeks=sorted(wanted))
     built = fx.build_features(candidates, tables)
     return Prepared(fx.attach_actuals(built, tables["player_week"]), upcoming, tables)
 
