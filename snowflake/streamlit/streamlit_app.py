@@ -1,4 +1,5 @@
-"""Fantasy Football Cheat Sheet: weekly projections, tiers, start/sit and a track record.
+"""Fantasy Football Cheat Sheet: weekly projections, tiers, a player index, start/sit and a
+track record.
 
 Runs as Streamlit in Snowflake (dbt marts in GRIDIRON), locally against a DuckDB build of
 the same marts, or as a public copy that reads a static Parquet snapshot:
@@ -19,6 +20,7 @@ import streamlit as st
 from data_access import ACTUAL_STATS, PROJECTED_STATS, Source, connect, load_helper
 
 tiers = load_helper("tiers")
+player_search = load_helper("player_search")
 
 POSITIONS = ("QB", "RB", "WR", "TE")
 FORMATS = {"PPR": "ppr", "Half PPR": "half", "Standard": "std", "Custom": "custom"}
@@ -34,7 +36,94 @@ METHOD_COLORS = alt.Scale(
     range=[LABEL_COLOR, "#9aa5b1", "#c8a24a", "#c0504d"],
 )
 
+# A plain, classic website look: paper background, serif headings, square corners, a navy
+# masthead with a gold rule. System fonts only (Streamlit in Snowflake blocks web fonts).
+STYLE = """
+<style>
+header[data-testid="stHeader"] { background: transparent; }
+header[data-testid="stHeader"] button, header[data-testid="stHeader"] svg { color: #fdfaf2; }
+footer { display: none; }
+.stApp { background: #f6f3ec; }
+[data-testid="stSidebar"] { background: #ebe5d8; border-right: 1px solid #cfc6b4; }
+.block-container { padding-top: 0; max-width: 1180px; }
+h1, h2, h3, h4 { font-family: Georgia, "Times New Roman", serif !important; color: #1d2a36; }
+
+.gl-masthead { background: #1d2a36; color: #fdfaf2; margin: 0 -100vw 1.4rem;
+  padding: 1.2rem 100vw 1.05rem; border-bottom: 5px solid #c9a24a; }
+.gl-logo { display: flex; align-items: center; gap: 16px; }
+.gl-icon { width: 50px; height: 50px; flex: none; }
+.gl-brand { font-family: Georgia, "Times New Roman", serif; font-size: 2.5rem; font-weight: 700;
+  line-height: 1; }
+.gl-brand em { font-weight: 400; font-style: italic; color: #c9a24a; }
+.gl-tagline { font-size: 0.76rem; color: #b9c4cf; margin-top: 0.45rem; text-transform: uppercase;
+  letter-spacing: 1.6px; }
+
+.st-key-section [role="radiogroup"] { gap: 4px; flex-wrap: wrap;
+  border-bottom: 1px solid #cfc6b4; margin-bottom: 0.8rem; }
+.st-key-section [role="radiogroup"] label { background: #ebe5d8; border: 1px solid #cfc6b4;
+  border-bottom: none; padding: 0.45rem 1.05rem; margin: 0 0 -1px 0; cursor: pointer; }
+.st-key-section [role="radiogroup"] label > div:first-child { display: none; }
+.st-key-section [role="radiogroup"] label p { font-weight: 600; }
+.st-key-section [role="radiogroup"] label:has(input:checked) { background: #f6f3ec;
+  box-shadow: inset 0 3px 0 #1f4e79; }
+.st-key-section [role="radiogroup"] label:has(input:checked) p { color: #1f4e79; }
+
+/* The A-Z player index reads like the index of a book: plain letters, current one boxed. */
+.st-key-index_letter [role="radiogroup"] { gap: 2px 6px; flex-wrap: wrap; }
+.st-key-index_letter [role="radiogroup"] label { padding: 0.1rem 0.45rem; margin: 0;
+  border: 1px solid transparent; cursor: pointer; }
+.st-key-index_letter [role="radiogroup"] label > div:first-child { display: none; }
+.st-key-index_letter [role="radiogroup"] label p { font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.05rem; color: #1a5ea8; }
+.st-key-index_letter [role="radiogroup"] label:has(input:checked) { border-color: #1f4e79;
+  background: #fdfaf2; }
+.st-key-index_letter [role="radiogroup"] label:has(input:checked) p { color: #1d2a36;
+  font-weight: 700; }
+
+[data-testid="stMetric"] { background: #fdfaf2; border: 1px solid #cfc6b4; padding: 0.6rem 0.9rem; }
+[data-testid="stMetricValue"] { font-family: Georgia, "Times New Roman", serif; }
+
+.gl-card-name { font-family: Georgia, "Times New Roman", serif; font-size: 1.6rem;
+  font-weight: 700; color: #1d2a36; margin: 0.6rem 0 0; }
+.gl-card-meta { color: #5c5a52; font-size: 0.9rem; margin-bottom: 0.6rem; }
+.gl-footer { margin-top: 3rem; padding: 1rem 0; border-top: 1px solid #cfc6b4;
+  font-size: 0.82rem; color: #6b6458; }
+html, body, .stApp, [data-testid="stMain"] { overflow-x: hidden; }
+
+@media (max-width: 640px) {
+  .block-container { padding-left: 1rem; padding-right: 1rem; }
+  .gl-masthead { padding-top: 0.85rem; padding-bottom: 0.8rem; margin-bottom: 1rem; }
+  .gl-icon { width: 34px; height: 34px; }
+  .gl-logo { gap: 10px; }
+  .gl-brand { font-size: 1.6rem; white-space: nowrap; }
+  .gl-tagline { font-size: 0.64rem; letter-spacing: 1px; }
+  [data-testid="stMetric"] { padding: 0.35rem 0.7rem; }
+  [data-testid="stMetricValue"] { font-size: 1.6rem; }
+  .st-key-section [role="radiogroup"] label { padding: 0.4rem 0.55rem; }
+  .st-key-section [role="radiogroup"] label p { font-size: 0.82rem; }
+}
+</style>
+"""
+MASTHEAD = """
+<div class="gl-masthead">
+  <div class="gl-logo">
+    <svg class="gl-icon" viewBox="0 0 48 48" fill="none" stroke="#c9a24a" stroke-width="2.4"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <ellipse cx="24" cy="24" rx="19" ry="11" transform="rotate(-35 24 24)"/>
+      <path d="M17.5 30.5l13-13"/>
+      <path d="M20.5 24.5l3 3M23.5 21.5l3 3M26.5 18.5l3 3"/>
+    </svg>
+    <div>
+      <div class="gl-brand">Gridiron <em>Lakehouse</em></div>
+      <div class="gl-tagline">Weekly fantasy football projections</div>
+    </div>
+  </div>
+</div>
+"""
+
 st.set_page_config(page_title="Gridiron Lakehouse | Fantasy Cheat Sheet", layout="wide")
+st.markdown(STYLE, unsafe_allow_html=True)
+st.markdown(MASTHEAD, unsafe_allow_html=True)
 
 
 @st.cache_resource
@@ -87,7 +176,7 @@ upcoming = weeks.loc[weeks["upcoming"] == 1, "week"]
 default_week = int(upcoming.iloc[0]) if not upcoming.empty else int(weeks["week"].max())
 week_options = [int(w) for w in weeks["week"]]
 
-st.sidebar.title("Gridiron Lakehouse")
+st.sidebar.header("Settings")
 week = st.sidebar.selectbox(
     "Week",
     week_options,
@@ -219,12 +308,7 @@ def headline_numbers() -> dict[str, str]:
 
 
 week_info = weeks[weeks["week"] == week].iloc[0]
-st.markdown(
-    f'<p style="color:{LABEL_COLOR};font-weight:600;letter-spacing:0.08em;'
-    'font-size:0.8rem;margin-bottom:0">GRIDIRON LAKEHOUSE</p>',
-    unsafe_allow_html=True,
-)
-st.title("Fantasy Football Cheat Sheet")
+st.header(f"Week {week} cheat sheet")
 if week_info["kind"] == "live":
     st.caption(
         f"{season} week {week}: live projections from the weekly Databricks job. A "
@@ -259,20 +343,59 @@ if headline:
         "before kickoff.",
     )
 
-sheet_tab, compare_tab, risers_tab, record_tab = st.tabs(
-    ["Cheat sheet", "Start / Sit", "Risers", "Track record"]
+everyone = pd.concat([week_sheet(p) for p in POSITIONS], ignore_index=True)
+everyone = everyone.sort_values("proj", ascending=False)
+
+
+@st.cache_data(ttl=600)
+def season_players(season: int) -> pd.DataFrame:
+    """Everyone with a game or a projection this season, with their latest team."""
+    seen = pd.concat(
+        [
+            run(
+                "select player_id, player_name, position, team, week "
+                "from marts.mart_player_game_log where season = ?",
+                (season,),
+            ),
+            run(
+                "select player_id, player_name, position, team, week "
+                "from marts.mart_cheat_sheet where season = ?",
+                (season,),
+            ),
+        ],
+        ignore_index=True,
+    )
+    latest = seen.sort_values("week").drop_duplicates("player_id", keep="last")
+    return latest.drop(columns="week").reset_index(drop=True)
+
+
+def as_players(frame: pd.DataFrame) -> list[Any]:
+    return [
+        player_search.Player(str(r.player_id), str(r.player_name), str(r.position), str(r.team))
+        for r in frame.itertuples()
+    ]
+
+
+# Section navigation that keeps its place when a widget reruns the script (built-in tabs
+# jump back to the first tab on a rerun), drawn to look like classic tabs.
+SECTIONS = ("Cheat sheet", "Player index", "Start / Sit", "Risers", "Track record")
+section = st.radio(
+    "Section", SECTIONS, horizontal=True, key="section", label_visibility="collapsed"
 )
 
 # Cheat sheet -------------------------------------------------------------------------------
 
-with sheet_tab:
+if section == "Cheat sheet":
     position = str(st.radio("Position", POSITIONS, horizontal=True, key="position"))
     sheet = week_sheet(position)
-    search = st.text_input("Find a player", key="search", placeholder="Name")
+    search = st.text_input(
+        "Find a player", key="search", placeholder="Name, initials or a close spelling"
+    )
     show_all = st.toggle("Show every projected player", key="show_all")
     view = sheet if show_all else sheet[sheet["rank"] <= POOL[position]]
-    if search:
-        view = sheet[sheet["player_name"].str.contains(search, case=False, na=False)]
+    if search.strip():
+        found = [m.player.player_id for m in player_search.search(as_players(sheet), search)]
+        view = sheet.set_index("player_id").loc[found].reset_index() if found else sheet.head(0)
     if bool(week_info["upcoming"]) and (sheet["injury_status"] == "None").all():
         st.info(
             "No game-status designations yet for this week: they come with the final "
@@ -323,11 +446,174 @@ with sheet_tab:
         points = base.mark_circle(size=70).encode(x="proj:Q")
         st.altair_chart((ranges + points).properties(height=18 * len(chart_rows)), width="stretch")
 
+# Player index ------------------------------------------------------------------------------
+
+
+def render_player_card(player: pd.Series) -> None:
+    """One player: this week's projection and the season so far."""
+    st.markdown(
+        f'<p class="gl-card-name">{player["player_name"]}</p>'
+        f'<p class="gl-card-meta">{player["position"]}, {player["team"]}</p>',
+        unsafe_allow_html=True,
+    )
+    this_week = everyone[everyone["player_id"] == player["player_id"]]
+    if this_week.empty:
+        st.caption(f"Not projected for week {week} (bye week or not expected to play).")
+    else:
+        row = this_week.iloc[0]
+        cells = st.columns(4)
+        cells[0].metric(f"Week {week} projection", f"{row['proj']:.1f}")
+        cells[1].metric("Range (10th-90th)", fmt_range(row["floor"], row["ceiling"]))
+        tier = "" if pd.isna(row["tier"]) else f", tier {int(row['tier'])}"
+        cells[2].metric("Position rank", f"{row['position']}{int(row['rank'])}{tier}")
+        cells[3].metric("Start / Sit", str(row["advice"]))
+        injury = row["injury_status"]
+        st.caption(
+            f"{row['matchup']}, team total {row['implied_points']:.1f}"
+            + (f". Injury report: {injury}" if injury != "None" else "")
+        )
+
+    games = run(
+        "select week, opponent, fantasy_points_ppr, proj_ppr, snap_share, targets, carries, "
+        "receptions, passing_yards, rushing_yards, receiving_yards, passing_tds, rushing_tds, "
+        "receiving_tds from marts.mart_player_game_log where season = ? and player_id = ? "
+        "order by week",
+        (season, player["player_id"]),
+    )
+    if games.empty:
+        st.caption(f"No games yet in {season}.")
+        return
+    st.markdown(
+        f"**{season} so far:** {len(games)} games, {games['fantasy_points_ppr'].mean():.1f} PPR "
+        f"points per game, best {games['fantasy_points_ppr'].max():.1f}."
+    )
+    log = pd.DataFrame(
+        {
+            "Week": games["week"],
+            "Opponent": games["opponent"],
+            "PPR points": games["fantasy_points_ppr"].round(1),
+            "Projected": games["proj_ppr"].round(1),
+            "Snap %": (games["snap_share"] * 100).round(0),
+            "Targets": games["targets"],
+            "Carries": games["carries"],
+            "Yards": (
+                games["passing_yards"] + games["rushing_yards"] + games["receiving_yards"]
+            ).round(0),
+            "TDs": games["passing_tds"] + games["rushing_tds"] + games["receiving_tds"],
+        }
+    )
+    st.dataframe(
+        log,
+        hide_index=True,
+        width="stretch",
+        column_config={"Projected": st.column_config.NumberColumn(format="%.1f")},
+    )
+    trend = games.melt(
+        id_vars="week",
+        value_vars=["fantasy_points_ppr", "proj_ppr"],
+        var_name="series",
+        value_name="points",
+    ).dropna()
+    trend["series"] = trend["series"].map(
+        {"fantasy_points_ppr": "Actual", "proj_ppr": "Projected before kickoff"}
+    )
+    st.altair_chart(
+        alt.Chart(trend)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X("week:O", title="Week"),
+            y=alt.Y("points:Q", title="PPR points"),
+            color=alt.Color(
+                "series:N",
+                title=None,
+                scale=alt.Scale(range=[LABEL_COLOR, "#c9a24a"]),
+                legend=alt.Legend(orient="bottom"),
+            ),
+        )
+        .properties(height=220),
+        width="stretch",
+    )
+
+
+def use_suggestion(name: str) -> None:
+    st.session_state.index_query = name
+
+
+if section == "Player index":
+    roster = season_players(season)
+    universe = as_players(roster)
+    relevance = dict(zip(everyone["player_id"].astype(str), everyone["proj"], strict=True))
+    query = st.text_input(
+        "Search the player index",
+        key="index_query",
+        placeholder="Try: cmc, jsn, mccaffery, jefferson justin, lions wr, chiefs rb",
+    )
+    st.caption(
+        "Finds players by full or partial name, last name first, initials, common nicknames "
+        "and close spellings. Team and position words narrow the list."
+    )
+    if query.strip():
+        matches = player_search.search(universe, query, relevance)
+        if not matches:
+            hint = player_search.did_you_mean(universe, query)
+            st.info(f'No players match "{query}".')
+            if hint:
+                st.button(f"Search for {hint}", on_click=use_suggestion, args=(hint,))
+        ids = [m.player.player_id for m in matches]
+        how = {m.player.player_id: m.reason for m in matches}
+        listing = roster.set_index("player_id").loc[ids].reset_index() if ids else roster.head(0)
+        listing["Found by"] = listing["player_id"].map(how)
+        strong = bool(matches) and matches[0].score >= player_search.PREFIX
+        clear_winner = len(matches) == 1 or (strong and matches[0].score > matches[1].score)
+    else:
+        letters = sorted({player_search.index_letter(p.name) for p in universe})
+        left, right = st.columns([3, 1])
+        letter = left.radio("Index", letters, horizontal=True, key="index_letter")
+        position_filter = right.selectbox("Position", ["All", *POSITIONS], key="index_position")
+        in_letter = roster[roster["player_name"].map(player_search.index_letter) == letter]
+        if position_filter != "All":
+            in_letter = in_letter[in_letter["position"] == position_filter]
+        listing = in_letter.assign(
+            surname=in_letter["player_name"].map(player_search.last_name)
+        ).sort_values(["surname", "player_name"])
+        clear_winner = False
+
+    projections = everyone.set_index("player_id")
+    table = pd.DataFrame(
+        {
+            "Player": listing["player_name"],
+            "Pos": listing["position"],
+            "Team": listing["team"],
+            f"Week {week}": listing["player_id"]
+            .map(projections["proj"])
+            .map(lambda v: "" if pd.isna(v) else f"{v:.1f}"),
+            "Rank": listing["player_id"]
+            .map(projections["rank"])
+            .map(lambda v: "" if pd.isna(v) else str(int(v))),
+        }
+    )
+    if "Found by" in listing:
+        table["Found by"] = listing["Found by"]
+    if not table.empty:
+        st.caption(f"{len(table)} player{'s' if len(table) != 1 else ''}. Select a row to open it.")
+        index_event = st.dataframe(
+            table,
+            hide_index=True,
+            width="stretch",
+            height=min(36 * len(table) + 38, 420),
+            on_select="rerun",
+            selection_mode="single-row",
+            key=f"index_table_{query.strip().lower()}_{len(table)}",
+        )
+        rows = index_event.selection.rows if index_event is not None else []
+        if rows:
+            render_player_card(listing.iloc[rows[0]])
+        elif clear_winner:
+            render_player_card(listing.iloc[0])
+
 # Start / Sit -----------------------------------------------------------------------------
 
-with compare_tab:
-    everyone = pd.concat([week_sheet(p) for p in POSITIONS], ignore_index=True)
-    everyone = everyone.sort_values("proj", ascending=False)
+if section == "Start / Sit":
     labels = {
         row.player_id: f"{row.player_name} ({row.position}, {row.team})"
         for row in everyone.itertuples()
@@ -394,7 +680,7 @@ with compare_tab:
 
 # Risers ----------------------------------------------------------------------------------
 
-with risers_tab:
+if section == "Risers":
     st.caption(
         "Usage over each player's last three games against his earlier games this season "
         "(or last season, early on). Expected PPR points (ffverse expected fantasy points) "
@@ -449,7 +735,7 @@ with risers_tab:
 
 # Track record ----------------------------------------------------------------------------
 
-with record_tab:
+if section == "Track record":
     summary = run("select * from marts.mart_backtest_summary order by scope, position, method")
     scopes = sorted(summary["scope"].unique(), key=scope_order, reverse=True)
     scope = st.selectbox("Backtest seasons", scopes, key="scope")
@@ -542,3 +828,10 @@ with record_tab:
             + (", ".join(str(w) for w in sorted(live_weeks)) if len(live_weeks) else "none yet")
             + ". Other weeks come from the walk-forward backtest."
         )
+
+st.markdown(
+    f'<div class="gl-footer">Gridiron Lakehouse, built by Rett Wilson. '
+    f'<a href="{REPO_URL}">Source code and method</a>. Data: nflverse (CC BY 4.0) and ffverse '
+    "expected fantasy points; FantasyPros expert ranks are used for evaluation only.</div>",
+    unsafe_allow_html=True,
+)

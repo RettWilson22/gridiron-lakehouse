@@ -71,7 +71,7 @@ Apple Silicon, Python 3.12, Java 21, on 2026-10-08 and 2026-10-09, with the comm
   and loading the pyfunc model from a local store (registration skipped).
 * **dbt**: `dbt build --target ci` passes 54 nodes on the fixtures; `make dbt-local` passes 55
   over the full local data, including the SQL-vs-Python reconciliation test.
-* **Checks**: `make check` (ruff, mypy strict, generated-SQL check, dbt CI build, 131 pytest
+* **Checks**: `make check` (ruff, mypy strict, generated-SQL check, dbt CI build, 152 pytest
   tests) passes; CI runs the same steps on every push to main and every pull request.
 * **App**: the Streamlit app's headless tests (`tests/test_streamlit_app.py`) cover the
   local DuckDB mode and the public snapshot mode.

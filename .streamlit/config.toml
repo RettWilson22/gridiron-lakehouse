@@ -1,6 +1,21 @@
-# Used by the public copy on Streamlit Community Cloud and by local runs from the repo root.
+# Theme for the public copy on Streamlit Community Cloud and for local runs from the repo
+# root: a plain, classic look (paper background, serif headings, square corners).
 [theme]
+base = "light"
 primaryColor = "#1f4e79"
+backgroundColor = "#f6f3ec"
+secondaryBackgroundColor = "#ebe5d8"
+textColor = "#222222"
+linkColor = "#1a5ea8"
+borderColor = "#cfc6b4"
+showWidgetBorder = true
+font = "Helvetica Neue, Helvetica, Arial, sans-serif"
+headingFont = "Georgia, Times New Roman, serif"
+baseRadius = "3px"
+buttonRadius = "3px"
+
+[theme.sidebar]
+backgroundColor = "#ebe5d8"
 
 [client]
 toolbarMode = "viewer"
