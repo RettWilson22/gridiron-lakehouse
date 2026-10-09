@@ -70,12 +70,17 @@ COUNT_COMPONENTS: Final = frozenset(
 )
 BAND_BINS: Final = 20
 BAND_QUANTILES: Final = (0.1, 0.9)
+# Early stopping is off on purpose. scikit-learn's default ("auto") turns it on above 10,000
+# training rows and then holds out a random 10% of them, so it would be on for some
+# positions and backtest seasons and off for others, and the backtest would not test the
+# setup that is deployed. Every fit runs all ``max_iter`` iterations on all rows.
 HGB_PARAMS: Final[dict[str, Any]] = {
     "max_iter": 200,
     "learning_rate": 0.05,
     "max_leaf_nodes": 7,
     "min_samples_leaf": 100,
     "l2_regularization": 1.0,
+    "early_stopping": False,
     "random_state": 0,
 }
 FORMATS: Final = ("ppr", "half", "std")

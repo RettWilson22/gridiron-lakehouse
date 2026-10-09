@@ -23,16 +23,18 @@ player-week; rank correlation is Spearman's within each week, averaged over week
 | Position | MAE, model | MAE, best simple baseline | Rank correlation, model / experts | Inside the 10th-90th range |
 | --- | --- | --- | --- | --- |
 | QB | **6.37** | 6.66 (season average) | 0.308 / **0.314** | 77.5% |
-| RB | **5.70** | 6.04 (season average) | 0.477 / **0.499** | 83.1% |
-| WR | **5.78** | 6.17 (season average) | 0.434 / **0.458** | 84.2% |
-| TE | **5.30** | 5.58 (season average) | 0.284 / **0.316** | 78.8% |
+| RB | **5.70** | 6.04 (season average) | 0.475 / **0.499** | 82.6% |
+| WR | **5.79** | 6.17 (season average) | 0.433 / **0.458** | 83.5% |
+| TE | **5.34** | 5.58 (season average) | 0.276 / **0.316** | 78.7% |
 
 The model's point projections beat last-three-games and season-to-date averages at every
 position. FantasyPros expert consensus still ranks players slightly better at every
-position. Numbers are from the local run in
-[`artifacts/backtest_metrics.json`](artifacts/backtest_metrics.json); the app shows the
-Databricks run, whose model numbers differ slightly. Method, per-season results and
-caveats: [docs/methodology.md](docs/methodology.md).
+position. Numbers are from the local `make model-local` run of 2026-10-09, saved in
+[`artifacts/backtest_metrics.json`](artifacts/backtest_metrics.json). The app and the public
+snapshot still show the earlier Databricks run, made before early stopping was switched
+off, so their model numbers differ; they will match the method above after the next deploy
+and job run. Method, per-season results and caveats:
+[docs/methodology.md](docs/methodology.md).
 
 ## What this demonstrates
 

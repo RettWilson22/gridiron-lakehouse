@@ -1,13 +1,15 @@
 # Methodology
 
 How the projections are built and how they are judged. Backtest numbers come from
-`make model-local` run on the local data on 2026-10-09 (UTC); the full output, including
-every metric below, is [`artifacts/backtest_metrics.json`](../artifacts/backtest_metrics.json).
+`make model-local` run on the local data on 2026-10-09 (UTC), after gradient-boosting early
+stopping was switched off (see Model); the full output, including every metric below, is
+[`artifacts/backtest_metrics.json`](../artifacts/backtest_metrics.json).
 
-The app's Track record tab shows the Databricks run instead. The sample sizes, baselines and
-expert rankings are identical, but the model was trained separately in each environment,
-and its numbers differ slightly: MAE by at most 0.024, rank correlation by at most 0.007 and
-range coverage by at most 1.3 percentage points.
+The app's Track record tab and the public snapshot show the Databricks run of 2026-10-09
+instead, which was made before that change. The sample sizes, baselines and expert rankings
+are identical, but the model numbers differ: MAE by at most 0.100, rank correlation by at
+most 0.019 and range coverage by at most 1.6 percentage points. The app will show the
+current method after the next deploy and job run.
 
 ## Data sources
 
@@ -87,6 +89,14 @@ receptions, receiving yards and touchdowns, fumbles lost, two-point conversions 
 loss for counts). Projected points in any format are the scoring rules applied to the
 projected stat line, which is also what custom league scoring needs.
 
+Every regressor runs its full 200 boosting iterations on all of its training rows, with a
+fixed random seed. scikit-learn's default early stopping switches itself on above 10,000
+training rows and then holds out a random 10% of them, so it would have been on for some
+positions and test seasons and off for others. Until 2026-10-09 the model used that default:
+QBs never crossed the threshold, but WRs did in every test season, RBs from 2024 and TEs in
+2025. Turning it off made the backtest measure one fixed setup, the same one that is
+deployed. The pooled MAE moved by 0.04 points or less at every position.
+
 Floor and ceiling are the 10th and 90th percentile of actual PPR points among training
 player-weeks with a similar projection (20 equal-count bins, interpolated, made monotone),
 scaled to half PPR and standard by the ratio of the projections.
@@ -142,9 +152,9 @@ averaged over weeks. ECR has no point values, so it is compared on ranking only.
 | Position | Player-weeks | MAE model | MAE last 3 | MAE season avg | RMSE model | RMSE last 3 | RMSE season avg | Rank corr. model | Rank corr. last 3 | Rank corr. season avg | Rank corr. ECR | Inside 10th-90th |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | QB | 1,091 | **6.37** | 6.83 | 6.66 | **7.96** | 8.69 | 8.48 | 0.308 | 0.200 | 0.223 | **0.314** | 77.5% |
-| RB | 2,170 | **5.70** | 6.29 | 6.04 | **7.39** | 8.16 | 7.84 | 0.477 | 0.391 | 0.426 | **0.499** | 83.1% |
-| WR | 3,221 | **5.78** | 6.50 | 6.17 | **7.50** | 8.29 | 7.98 | 0.434 | 0.321 | 0.364 | **0.458** | 84.2% |
-| TE | 1,075 | **5.30** | 5.94 | 5.58 | **6.96** | 7.63 | 7.22 | 0.284 | 0.192 | 0.209 | **0.316** | 78.8% |
+| RB | 2,170 | **5.70** | 6.29 | 6.04 | **7.39** | 8.16 | 7.84 | 0.475 | 0.391 | 0.426 | **0.499** | 82.6% |
+| WR | 3,221 | **5.79** | 6.50 | 6.17 | **7.51** | 8.29 | 7.98 | 0.433 | 0.321 | 0.364 | **0.458** | 83.5% |
+| TE | 1,075 | **5.34** | 5.94 | 5.58 | **6.98** | 7.63 | 7.22 | 0.276 | 0.192 | 0.209 | **0.316** | 78.7% |
 
 ### By season
 
@@ -152,28 +162,28 @@ MAE, and rank correlation model / ECR.
 
 | Season | QB | RB | WR | TE |
 | --- | --- | --- | --- | --- |
-| 2023 MAE model / last 3 / season avg | 6.18 / 6.74 / 6.40 | 5.55 / 6.22 / 6.05 | 5.82 / 6.52 / 6.31 | 5.23 / 5.67 / 5.48 |
-| 2023 rank corr. model / ECR | 0.365 / 0.395 | 0.450 / 0.452 | 0.451 / 0.482 | 0.287 / 0.365 |
-| 2024 MAE model / last 3 / season avg | 6.34 / 6.59 / 6.32 | 5.64 / 6.12 / 5.97 | 5.91 / 6.65 / 6.07 | 5.28 / 5.98 / 5.52 |
-| 2024 rank corr. model / ECR | 0.329 / 0.324 | 0.505 / 0.537 | 0.414 / 0.439 | 0.314 / 0.328 |
-| 2025 MAE model / last 3 / season avg | 6.59 / 7.14 / 7.21 | 5.91 / 6.51 / 6.09 | 5.63 / 6.33 / 6.11 | 5.39 / 6.17 / 5.74 |
-| 2025 rank corr. model / ECR | 0.231 / 0.225 | 0.479 / 0.512 | 0.434 / 0.452 | 0.255 / 0.257 |
+| 2023 MAE model / last 3 / season avg | 6.18 / 6.74 / 6.40 | 5.55 / 6.22 / 6.05 | 5.83 / 6.52 / 6.31 | 5.23 / 5.67 / 5.48 |
+| 2023 rank corr. model / ECR | 0.365 / 0.395 | 0.450 / 0.452 | 0.450 / 0.482 | 0.287 / 0.365 |
+| 2024 MAE model / last 3 / season avg | 6.34 / 6.59 / 6.32 | 5.65 / 6.12 / 5.97 | 5.93 / 6.65 / 6.07 | 5.28 / 5.98 / 5.52 |
+| 2024 rank corr. model / ECR | 0.329 / 0.324 | 0.501 / 0.537 | 0.415 / 0.439 | 0.314 / 0.328 |
+| 2025 MAE model / last 3 / season avg | 6.59 / 7.14 / 7.21 | 5.90 / 6.51 / 6.09 | 5.64 / 6.33 / 6.11 | 5.50 / 6.17 / 5.74 |
+| 2025 rank corr. model / ECR | 0.231 / 0.225 | 0.478 / 0.512 | 0.434 / 0.452 | 0.233 / 0.257 |
 
 ### Reading the results
 
 * **Points.** Over the three seasons the model has the lowest MAE and RMSE at every
-  position, by 0.28 to 0.39 points per player-week against the better of the two averages.
+  position, by 0.24 to 0.37 points per player-week against the better of the two averages.
   It is not a clean sweep: for 2024 QBs the season-to-date average had a slightly lower MAE
   (6.32 against 6.34), though a higher RMSE.
 * **Ranking.** The model ranks players better than both averages at every position, and
   worse than FantasyPros consensus at every position over the three seasons (by 0.006 to
-  0.032). It matched or beat ECR only for QBs in 2024 and 2025. Experts see things this
+  0.040). It matched or beat ECR only for QBs in 2024 and 2025. Experts see things this
   model does not: news, coaching intent, the end of the week's injury picture.
-* **Bias.** In this pool the model projects 0.5 to 1.1 points low on average. The pool is
+* **Bias.** In this pool the model projects 0.4 to 1.0 points low on average. The pool is
   players the experts rank highly, and the model is trained on every candidate, including
   backups who often score zero, so it shades expert favorites down.
 * **Range.** A calibrated 80% range should contain about 80% of outcomes. The model's
-  10th-90th percentile ranges contained 77.5-84.2% depending on position: slightly narrow
+  10th-90th percentile ranges contained 77.5-83.5% depending on position: slightly narrow
   for QBs and TEs, slightly wide for RBs and WRs.
 
 ### What the comparison does and does not control

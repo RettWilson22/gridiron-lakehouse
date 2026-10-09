@@ -41,8 +41,9 @@ Also confirmed in the cloud:
   not been run end to end.
 
 Changed since that deployment and not yet deployed: the years-of-experience feature fix
-(identical outputs locally, below), the `GRIDIRON_DBT` service user in
-`02_database_and_roles.sql`, and small wording changes in the app.
+(identical outputs locally, below), gradient-boosting early stopping switched off (new
+local numbers, below), the `GRIDIRON_DBT` service user in `02_database_and_roles.sql`, and
+small wording changes in the app.
 
 ## Local: a laptop against the real data
 
@@ -66,6 +67,13 @@ Apple Silicon, Python 3.12, Java 21, on 2026-10-08 and 2026-10-09, with the comm
   roster as of each week changed no value, and `make model-local` reproduced
   `artifacts/backtest_metrics.json` exactly (the file now also records candidate-pool
   coverage).
+* **Early stopping off** (2026-10-09): before the change, `make model-local` on a copy of
+  the data reproduced `artifacts/backtest_metrics.json` exactly in 84 seconds. With early
+  stopping off it took 96 seconds and produced the same 27,857 backtest projections, sample
+  sizes, baselines and expert numbers. Model metrics changed where early stopping had been
+  on (WRs in every test season, RBs in 2024 and 2025, TEs in 2025); QB numbers are
+  identical. That run (after Thursday's kickoff) kept the 33 projections for Thursday's
+  game as published and refreshed the other 539 live projections with the new model.
 * **Job smoke test** (`make smoke-jobs`): the real `train`, `score` (twice) and
   `publish_serving` (twice) entry points against a local Spark catalog, with MLflow logging
   and loading the pyfunc model from a local store (registration skipped).
