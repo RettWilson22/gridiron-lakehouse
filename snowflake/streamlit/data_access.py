@@ -34,7 +34,9 @@ MARTS: Final = (
     "mart_player_game_log",
     "mart_backtest_summary",
 )
-# Stat-line keys understood by gridiron.scoring and the FANTASY_POINTS UDF.
+# Stat-line keys understood by gridiron.scoring and the FANTASY_POINTS UDF. Copies of
+# gridiron.features.COMPONENTS and gridiron.scoring.STATS, because Streamlit in Snowflake
+# runs this file without the package; tests/test_scoring.py fails if they drift.
 PROJECTED_STATS: Final = (
     "passing_yards",
     "passing_tds",

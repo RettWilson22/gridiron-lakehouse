@@ -18,20 +18,25 @@ import math
 from collections.abc import Mapping
 from typing import Any, Final
 
-# Stat names: the same as the gold ``player_week`` columns.
-STATS: Final = (
-    "passing_yards",
-    "passing_tds",
-    "passing_interceptions",
-    "rushing_yards",
-    "rushing_tds",
-    "receptions",
-    "receiving_yards",
-    "receiving_tds",
-    "fumbles_lost",
-    "two_point_conversions",
-    "special_teams_tds",
+# The scored stat line: each stat (named like the gold ``player_week`` columns) and the
+# setting that gives its points per unit. This is the one list of stats; the model's
+# components (``features.COMPONENTS``) and ``model.points`` are derived from it. The app's
+# ``data_access`` keeps its own copy because this file is not uploaded next to the app, and
+# a test checks the copies agree.
+UNIT_VALUES: Final = (
+    ("passing_yards", "pass_yd"),
+    ("passing_tds", "pass_td"),
+    ("passing_interceptions", "pass_int"),
+    ("rushing_yards", "rush_yd"),
+    ("rushing_tds", "rush_td"),
+    ("receptions", "rec"),
+    ("receiving_yards", "rec_yd"),
+    ("receiving_tds", "rec_td"),
+    ("fumbles_lost", "fumble_lost"),
+    ("two_point_conversions", "two_pt"),
+    ("special_teams_tds", "st_td"),
 )
+STATS: Final = tuple(stat for stat, _ in UNIT_VALUES)
 
 # Points per unit of each stat, plus yardage bonuses and a tight-end reception premium.
 STANDARD: Final[dict[str, float]] = {
@@ -61,19 +66,6 @@ PRESETS: Final[dict[str, dict[str, float]]] = {
 }
 SETTINGS: Final = tuple(STANDARD)
 
-_UNIT_VALUES: Final = (
-    ("passing_yards", "pass_yd"),
-    ("passing_tds", "pass_td"),
-    ("passing_interceptions", "pass_int"),
-    ("rushing_yards", "rush_yd"),
-    ("rushing_tds", "rush_td"),
-    ("receptions", "rec"),
-    ("receiving_yards", "rec_yd"),
-    ("receiving_tds", "rec_td"),
-    ("fumbles_lost", "fumble_lost"),
-    ("two_point_conversions", "two_pt"),
-    ("special_teams_tds", "st_td"),
-)
 _BONUSES: Final = (
     ("passing_yards", 300, "bonus_pass_300"),
     ("passing_yards", 400, "bonus_pass_400"),
@@ -125,7 +117,7 @@ def fantasy_points(
     stat line understates their expected value; the app says so where it matters.
     """
     settings = resolve(scoring)
-    points = sum(_number(stats.get(stat)) * settings[key] for stat, key in _UNIT_VALUES)
+    points = sum(_number(stats.get(stat)) * settings[key] for stat, key in UNIT_VALUES)
     for stat, threshold, key in _BONUSES:
         if _number(stats.get(stat)) >= threshold:
             points += settings[key]
