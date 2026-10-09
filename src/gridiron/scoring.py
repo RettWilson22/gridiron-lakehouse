@@ -14,6 +14,7 @@ The default settings reproduce nflverse ``fantasy_points`` (standard) and
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from typing import Any, Final
 
@@ -108,9 +109,11 @@ def resolve(scoring: Mapping[str, Any] | str | None = None) -> dict[str, float]:
 
 
 def _number(value: Any) -> float:
+    """A stat value as a float; missing values (None, empty, NaN) count as zero."""
     if value is None or value == "":
         return 0.0
-    return float(value)
+    number = float(value)
+    return 0.0 if math.isnan(number) else number
 
 
 def fantasy_points(

@@ -49,4 +49,4 @@ def test_udf_registration_points_at_the_scoring_handler() -> None:
 def test_udf_handler_needs_only_the_standard_library() -> None:
     source = (REPO_ROOT / "src" / "gridiron" / "scoring.py").read_text()
     imports = re.findall(r"^(?:from|import) ([\w.]+)", source, flags=re.MULTILINE)
-    assert set(imports) <= {"__future__", "collections.abc", "typing"}
+    assert set(imports) <= {"__future__", "collections.abc", "math", "typing"}

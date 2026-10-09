@@ -1,0 +1,7 @@
+# Streamlit Community Cloud installs these for streamlit_public/streamlit_app.py.
+# Same Streamlit version as the Snowflake app (snowflake/streamlit/environment.yml).
+streamlit==1.52.2
+pandas==2.3.3
+altair==6.3.0
+duckdb==1.5.6
+pyarrow==25.0.1

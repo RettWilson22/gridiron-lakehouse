@@ -6,7 +6,7 @@ DBT    := cd snowflake/dbt && ../../$(BIN)/dbt
 TARGET ?= prod
 
 .PHONY: help setup lint format typecheck test sql-check dbt-ci dbt-local check \
-        ingest pipeline-local model-local local fixtures smoke-jobs \
+        ingest pipeline-local model-local local fixtures smoke-jobs app app-public snapshot \
         bundle-validate bundle-deploy bundle-run sync clean
 
 help:  ## List targets
@@ -59,6 +59,15 @@ fixtures:  ## Rebuild checked-in test fixtures and generated SQL from local data
 
 smoke-jobs:  ## Run the Databricks job entry points against a local Spark catalog
 	$(BIN)/python scripts/smoke_databricks_jobs.py --lakehouse-dir data/lakehouse
+
+app:  ## Run the app locally against the DuckDB marts (local.duckdb, else ci.duckdb)
+	GRIDIRON_APP_MODE=local $(BIN)/streamlit run snowflake/streamlit/streamlit_app.py
+
+app-public:  ## Run the public copy against the committed snapshot
+	$(BIN)/streamlit run streamlit_public/streamlit_app.py
+
+snapshot:  ## Export the public snapshot from data/lakehouse (see the script for --from-databricks)
+	$(BIN)/python scripts/export_public_snapshot.py
 
 bundle-validate:  ## databricks bundle validate (needs the Databricks CLI and auth)
 	cd databricks && databricks bundle validate -t $(TARGET)
