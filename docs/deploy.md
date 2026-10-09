@@ -188,11 +188,13 @@ make app-public
 git add streamlit_public/snapshot
 ```
 
-The export builds the dbt marts in a throwaway DuckDB database and blanks the per-player
-FantasyPros ranks. In Streamlit Community Cloud, create an app from the GitHub repository,
-branch `main`, main file `streamlit_public/streamlit_app.py`, Python 3.12; it installs
-`streamlit_public/requirements.txt`. The snapshot changes only when it is exported and
-committed again.
+The export builds the dbt marts in a throwaway DuckDB database, copies only the columns
+listed in `EXPORTED_COLUMNS` in the script (a new mart column stays out until it is added
+there) and blanks the per-player FantasyPros ranks. A test checks that the committed files
+have exactly those columns and no expert ranks. In Streamlit Community Cloud, create an
+app from the GitHub repository, branch `main`, main file `streamlit_public/streamlit_app.py`,
+Python 3.12; it installs `streamlit_public/requirements.txt`. The snapshot changes only when
+it is exported and committed again.
 
 ## 5. Each week
 
