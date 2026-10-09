@@ -20,21 +20,28 @@ Walk-forward backtest over the 2023-2025 seasons, scored on the players FantasyP
 in each week's top 24 QBs, 48 RBs, 72 WRs and 24 TEs. Errors are PPR points per
 player-week; rank correlation is Spearman's within each week, averaged over weeks.
 
-| Position | MAE, model | MAE, best simple baseline | Rank correlation, model / experts | Inside the 10th-90th range |
-| --- | --- | --- | --- | --- |
-| QB | **6.37** | 6.66 (season average) | 0.308 / **0.314** | 77.5% |
-| RB | **5.70** | 6.04 (season average) | 0.475 / **0.499** | 82.6% |
-| WR | **5.79** | 6.17 (season average) | 0.433 / **0.458** | 83.5% |
-| TE | **5.34** | 5.58 (season average) | 0.276 / **0.316** | 78.7% |
+| Position | MAE, model | MAE, best simple baseline | MAE gap (95% interval) | Rank correlation, model / experts | Rank correlation gap (95% interval) | Inside the 10th-90th range |
+| --- | --- | --- | --- | --- | --- | --- |
+| QB | **6.37** | 6.66 (season average) | -0.29 (-0.60 to -0.02) | 0.308 / **0.314** | -0.007 (-0.036 to 0.022) | 80.4% |
+| RB | **5.70** | 6.04 (season average) | -0.34 (-0.46 to -0.22) | 0.475 / **0.499** | -0.023 (-0.045 to -0.002) | 84.8% |
+| WR | **5.79** | 6.17 (season average) | -0.37 (-0.55 to -0.23) | 0.433 / **0.458** | -0.025 (-0.040 to -0.010) | 85.1% |
+| TE | **5.34** | 5.58 (season average) | -0.24 (-0.39 to -0.09) | 0.276 / **0.316** | -0.040 (-0.080 to 0.005) | 81.5% |
 
 The model's point projections beat last-three-games and season-to-date averages at every
-position. FantasyPros expert consensus still ranks players slightly better at every
-position. Numbers are from the local `make model-local` run of 2026-10-09, saved in
-[`artifacts/backtest_metrics.json`](artifacts/backtest_metrics.json). The app and the public
-snapshot still show the earlier Databricks run, made before early stopping was switched
-off, so their model numbers differ; they will match the method above after the next deploy
-and job run. Method, per-season results and caveats:
-[docs/methodology.md](docs/methodology.md).
+position, and the 95% intervals (a bootstrap that resamples whole weeks) leave out zero at
+every position, though only just for QBs. FantasyPros expert consensus ranks players
+better at every position, but that gap is distinguishable from zero only for RBs and WRs;
+for QBs and TEs it is within noise. The floor and ceiling are now fitted on out-of-fold
+projections, which brought QBs and TEs up to the 80% target and left RBs and WRs a little
+wide.
+
+Numbers are from the local `make model-local` run of 2026-10-09, saved in
+[`artifacts/backtest_metrics.json`](artifacts/backtest_metrics.json) and
+[`artifacts/backtest_intervals.json`](artifacts/backtest_intervals.json). The app and the
+public snapshot show the 2026-10-09 Databricks run, made before the floor and ceiling
+change, so their ranges are the old ones and their model numbers differ slightly; they
+will match after the next deploy and job run. The intervals are not in the app. Method,
+per-season results and caveats: [docs/methodology.md](docs/methodology.md).
 
 ## What this demonstrates
 
@@ -52,7 +59,7 @@ and job run. Method, per-season results and caveats:
   volume); Snowflake SQL for the warehouse, cost monitor, roles, UDF, stream, task and app;
   DDL generated from the table contracts; a dbt project with Snowflake and DuckDB targets.
 * **CI on every push to main.** Ruff, strict mypy, a generated-SQL freshness check, a dbt build and
-  its tests on DuckDB fixtures, and 211 pytest tests, including the pipeline on local Spark
+  its tests on DuckDB fixtures, and 219 pytest tests, including the pipeline on local Spark
   and headless tests of the Streamlit app.
 
 ## Why both platforms?
