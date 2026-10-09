@@ -11,7 +11,9 @@ the same marts, or as a public copy that reads a static Parquet snapshot:
 
 from __future__ import annotations
 
+import html
 import json
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -216,6 +218,19 @@ def week_sheets(season: int, week: int, fmt: str, settings_json: str) -> pd.Data
 
 def fmt_range(low: float, high: float) -> str:
     return f"{low:.1f} - {high:.1f}"
+
+
+# Markdown, HTML and Streamlit syntax characters (links, images, emphasis, raw HTML,
+# :color[...] directives, $math$).
+_MARKDOWN_SYNTAX = re.compile(r"([\\`*_{}\[\]()<>#+\-.!|~$:&])")
+
+
+def plain(value: object) -> str:
+    """Third-party or typed text for anything Streamlit renders as Markdown (markdown,
+    captions, info boxes, metric and button labels): every syntax character is
+    backslash-escaped, so the text shows exactly as written and never as a link, an image
+    or HTML. Player names, teams and injury notes come from public data feeds."""
+    return _MARKDOWN_SYNTAX.sub(r"\\\1", str(value))
 
 
 # Sidebar ---------------------------------------------------------------------------------
@@ -459,9 +474,11 @@ def cheat_sheet_section() -> None:
 
 def render_player_card(player: pd.Series) -> None:
     """One player: this week's projection and the season so far."""
-    st.markdown(
-        f'<p class="gl-card-name">{player["player_name"]}</p>'
-        f'<p class="gl-card-meta">{player["position"]}, {player["team"]}</p>',
+    name, position, team = (
+        html.escape(str(player[c])) for c in ("player_name", "position", "team")
+    )
+    st.markdown(  # raw HTML for the card's styling, so every value is HTML-escaped
+        f'<p class="gl-card-name">{name}</p><p class="gl-card-meta">{position}, {team}</p>',
         unsafe_allow_html=True,
     )
     this_week = everyone[everyone["player_id"] == player["player_id"]]
@@ -477,8 +494,8 @@ def render_player_card(player: pd.Series) -> None:
         cells[3].metric("Start / Sit", str(row["advice"]))
         injury = row["injury_status"]
         st.caption(
-            f"{row['matchup']}, team total {row['implied_points']:.1f}"
-            + (f". Injury report: {injury}" if injury != "None" else "")
+            f"{plain(row['matchup'])}, team total {row['implied_points']:.1f}"
+            + (f". Injury report: {plain(injury)}" if injury != "None" else "")
         )
 
     games = run(
@@ -564,9 +581,9 @@ def player_index_section() -> None:
         matches = player_search.search(universe, query, relevance)
         if not matches:
             hint = player_search.did_you_mean(universe, query)
-            st.info(f'No players match "{query}".')
+            st.info(f'No players match "{plain(query)}".')
             if hint:
-                st.button(f"Search for {hint}", on_click=use_suggestion, args=(hint,))
+                st.button(f"Search for {plain(hint)}", on_click=use_suggestion, args=(hint,))
         ids = [m.player.player_id for m in matches]
         how = {m.player.player_id: m.reason for m in matches}
         listing = roster.set_index("player_id").loc[ids].reset_index() if ids else roster.head(0)
@@ -650,12 +667,13 @@ def start_sit_section() -> None:
     for column, row in zip(columns, picked.to_dict("records"), strict=True):
         injury = row["injury_status"]
         with column:
-            st.metric(str(row["player_name"]), f"{row['proj']:.1f}", help="Projected points")
+            st.metric(plain(row["player_name"]), f"{row['proj']:.1f}", help="Projected points")
             st.caption(
-                f"{row['position']}{row['rank']} | tier {row['tier']} | {row['advice']}\n\n"
-                f"{row['matchup']}, team total {row['implied_points']:.1f}\n\n"
+                f"{plain(row['position'])}{row['rank']} | tier {row['tier']} | "
+                f"{plain(row['advice'])}\n\n"
+                f"{plain(row['matchup'])}, team total {row['implied_points']:.1f}\n\n"
                 f"Range {fmt_range(row['floor'], row['ceiling'])}"
-                + (f"\n\nInjury: {injury}" if injury != "None" else "")
+                + (f"\n\nInjury: {plain(injury)}" if injury != "None" else "")
             )
     if len(picked) > 1:
         best, second = picked.iloc[0], picked.iloc[1]
@@ -664,7 +682,7 @@ def start_sit_section() -> None:
         width = best["ceiling"] - best["floor"]
         close = margin < 1.0 or overlap > 0.8 * width
         st.markdown(
-            f"**Start {best['player_name']}**: projected {margin:.1f} points ahead"
+            f"**Start {plain(best['player_name'])}**: projected {margin:.1f} points ahead"
             + (", a close call given how much the ranges overlap." if close else ".")
         )
     history = run(

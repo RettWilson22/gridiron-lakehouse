@@ -237,3 +237,42 @@ def test_no_week_is_labelled_upcoming_after_the_season(
     week = test.sidebar.selectbox[0]
     assert week.options  # labels read "Week N"
     assert not any("(upcoming)" in label for label in week.options)
+
+
+HOSTILE_NAME = '<iframe srcdoc="<script>alert(1)</script>"></iframe> [x](https://evil.test)'
+
+
+def rendered_text(test: AppTest) -> list[str]:
+    """Every markdown-rendering element's source text (labels included)."""
+    texts = [e.value for e in (*test.markdown, *test.caption, *test.info)]
+    texts += [m.label for m in test.metric] + [b.label for b in test.button]
+    return [str(t) for t in texts]
+
+
+def test_third_party_names_render_as_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    load_exporter().export_marts(CI_DB, tmp_path)
+    for mart in ("mart_cheat_sheet", "mart_player_game_log", "mart_risers"):
+        path = tmp_path / f"{mart}.parquet"
+        frame = pd.read_parquet(path)
+        frame["player_name"] = frame["player_name"].replace("Jared Goff", HOSTILE_NAME)
+        frame.to_parquet(path)
+    monkeypatch.setenv("GRIDIRON_SNAPSHOT_DIR", str(tmp_path))
+    monkeypatch.delenv("GRIDIRON_APP_MODE", raising=False)
+    test = AppTest.from_file(str(PUBLIC_APP), default_timeout=120)
+    test.run()
+    test.radio(key="section").set_value("Player index").run()
+    test.text_input(key="index_query").set_value("iframe").run()
+    assert not test.exception
+    cards = [md.value for md in test.markdown if '<p class="gl-card-name">' in md.value]
+    assert cards, "the player card did not open"
+    assert "&lt;iframe srcdoc=&quot;&lt;script&gt;" in cards[0]  # HTML-escaped in the card
+    assert "<iframe" not in cards[0] and "<script" not in cards[0]
+
+    test.radio(key="section").set_value("Start / Sit").run()
+    compare = test.multiselect(key="compare")
+    hostile = next(o for o in compare.options if o.startswith("<iframe"))
+    compare.set_value([hostile, compare.options[0]]).run()
+    assert not test.exception
+    for text in rendered_text(test):
+        unescaped = text.replace("\\<", "").replace("\\[", "").replace("\\(", "")
+        assert "<iframe" not in unescaped and "](https://evil" not in unescaped, text

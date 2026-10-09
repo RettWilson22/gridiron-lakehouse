@@ -7,16 +7,43 @@ or FALSE, never NULL) so local and pipeline behaviour cannot diverge.
 
 ``DROP`` rules remove rows that cannot be used at all (missing keys). ``WARN`` rules keep
 the row and count violations in the pipeline event log.
+
+Player names, team codes and positions come from third-party feeds and end up on screen,
+so silver also checks their shape: a team is one of the 32 nflverse codes, a position (in
+datasets limited to fantasy positions) is QB, RB, WR or TE, and a name is at most 64
+letters (accented ones included), spaces, periods, apostrophes and hyphens. These are
+WARN rules: real names do break the pattern ("Kenneth Murray, Jr." in the box scores), so
+violations are counted, not dropped. The app escapes every name it renders either way.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Final
 
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
+from gridiron.config import POSITIONS
+from gridiron.player_search import TEAMS
+
 Rules = dict[str, str]
+
+
+def _one_of(column: str, values: Iterable[str]) -> str:
+    listed = ", ".join(f"'{value}'" for value in sorted(values))
+    return f"coalesce({column} IN ({listed}), FALSE)"
+
+
+def known_teams(*columns: str) -> str:
+    """Every column holds one of the 32 nflverse team codes."""
+    return " AND ".join(_one_of(column, TEAMS) for column in columns)
+
+
+FANTASY_POSITION: Final = _one_of("position", POSITIONS)
+# Java regex: letters and combining marks (accents), space, period, apostrophe (\x27),
+# hyphen; 1 to 64 characters.
+PLAIN_PLAYER_NAME: Final = r"coalesce(player_name RLIKE '^[\\p{L}\\p{M} .\\x27-]{1,64}$', FALSE)"
 
 DROP: Final[dict[str, Rules]] = {
     "plays": {
@@ -77,23 +104,40 @@ WARN: Final[dict[str, Rules]] = {
         "ppr_is_standard_plus_receptions": (
             "coalesce(abs(fantasy_points_ppr - fantasy_points - receptions) < 0.01, FALSE)"
         ),
+        "known_teams": known_teams("team", "opponent_team"),
+        "plain_player_name": PLAIN_PLAYER_NAME,
     },
+    "players": {"plain_player_name": PLAIN_PLAYER_NAME},
     "snap_counts": {
         "mapped_to_gsis_id": "player_id IS NOT NULL",
         "offense_pct_in_range": "offense_pct IS NULL OR offense_pct BETWEEN 0 AND 1",
+        "known_teams": known_teams("team", "opponent"),
     },
+    "rosters": {"known_team": known_teams("team")},
     "injuries": {
         "known_report_status": (
             "report_status IS NULL OR report_status IN "
             "('Out', 'Doubtful', 'Questionable', 'Probable', 'Note')"
         ),
+        "known_team": known_teams("team"),
+    },
+    "depth_charts": {
+        "known_team": known_teams("team"),
+        "fantasy_position": FANTASY_POSITION,
+        "plain_player_name": PLAIN_PLAYER_NAME,
     },
     "schedules": {
         "completed_games_have_lines": (
             "home_score IS NULL OR (spread_line IS NOT NULL AND total_line IS NOT NULL)"
         ),
+        "known_teams": known_teams("home_team", "away_team"),
     },
-    "ecr": {"mapped_to_gsis_id": "player_id IS NOT NULL"},
+    # FantasyPros uses its own team codes (JAC, LAR, FA), so ECR teams are not checked.
+    "ecr": {
+        "mapped_to_gsis_id": "player_id IS NOT NULL",
+        "fantasy_position": FANTASY_POSITION,
+        "plain_player_name": PLAIN_PLAYER_NAME,
+    },
     "player_week": {
         "shares_are_fractions": (
             "coalesce(target_share BETWEEN 0 AND 1, TRUE) "
