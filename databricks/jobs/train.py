@@ -1,11 +1,15 @@
 """Job task: walk-forward backtest, then train and register the model for the upcoming week.
 
 * backtests the configured seasons (each season projected by a model trained only on the
-  seasons before it) and backfills the in-progress season's completed weeks the same way;
+  seasons before it) and backfills the in-progress season's completed weeks the same way,
+  reusing the stored projections of any season whose data did not change;
 * writes ``backtest_projections`` and ``backtest_metrics`` to the gold schema;
 * trains the live model on every completed week before the upcoming week, logs it to MLflow
   with the backtest metrics, and registers it in Unity Catalog
-  (``<catalog>.<schema>.fantasy_projection``) with the ``champion`` alias.
+  (``<catalog>.<schema>.fantasy_projection``) with the ``champion`` alias. The run and the
+  model version are tagged with the training data's fingerprint; when the champion already
+  has the fingerprint of today's training data (the Thursday and Saturday runs, usually),
+  fitting and registering are skipped.
 """
 
 from __future__ import annotations
@@ -23,11 +27,16 @@ from pyspark.sql import SparkSession
 from gridiron import backtest as bt
 from gridiron import registry
 from gridiron.features import FEATURES
-from gridiron.model import HGB_PARAMS
+from gridiron.model import HGB_PARAMS, ProjectionModel, fingerprint
 from gridiron.spark_io import read_table, write_table
-from gridiron.workflow import DEFAULT_TEST_SEASONS, prepare, run_backtest, train_live, upcoming_rows
-
-MODEL_NAME = "fantasy_projection"
+from gridiron.workflow import (
+    DEFAULT_TEST_SEASONS,
+    live_history,
+    prepare,
+    reused_versions,
+    run_backtest,
+    upcoming_rows,
+)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -41,15 +50,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="comma separated",
     )
     parser.add_argument(
-        "--skip-registration",
-        action="store_true",
-        help="log the model without registering it (local smoke runs without Unity Catalog)",
+        "--registry-uri",
+        default="databricks-uc",
+        help="MLflow model registry (a local file store in smoke runs)",
     )
     return parser.parse_args(argv)
 
 
 def run_task(argv: list[str] | None = None) -> str | None:
-    """Run the task. Returns the logged model's URI, or None if there is no upcoming week."""
+    """Run the task. Returns the champion model's URI, or None if there is no upcoming week."""
     args = parse_args(argv)
     spark = SparkSession.builder.getOrCreate()
     spark.conf.set("spark.sql.session.timeZone", "UTC")
@@ -59,23 +68,40 @@ def run_task(argv: list[str] | None = None) -> str | None:
         return f"{args.catalog}.{args.schema}.{name}"
 
     prepared = prepare(lambda name: read_table(spark, table(name)))
+    stored = (
+        read_table(spark, table("backtest_projections"))
+        if spark.catalog.tableExists(table("backtest_projections"))
+        else None
+    )
     test_seasons = [int(s) for s in args.test_seasons.split(",")]
-    backtest_projections, metrics = run_backtest(prepared, test_seasons, now)
+    backtest_projections, metrics = run_backtest(prepared, test_seasons, now, stored)
     write_table(spark, backtest_projections, table("backtest_projections"))
     write_table(spark, metrics, table("backtest_metrics"))
-    print(f"backtest: {len(backtest_projections)} projections; upcoming {prepared.upcoming}")
+    reused = reused_versions(stored, backtest_projections)
+    print(
+        f"backtest: {len(backtest_projections)} projections, "
+        f"{backtest_projections['model_version'].nunique()} seasons ({len(reused)} reused); "
+        f"upcoming {prepared.upcoming}"
+    )
 
     if prepared.upcoming is None:
         print("no upcoming regular-season week; nothing to train for")
         return None
-    model = train_live(prepared)
+    history = live_history(prepared)
+    trained_on = fingerprint(history)
+    mlflow.set_registry_uri(args.registry_uri)
+    client = MlflowClient()
+    name = registry.registered_name(args.catalog, args.schema)
+    champion = registry.champion_trained_on(client, name, trained_on)
+    if champion is not None:
+        print(f"{name} v{champion.version} is already trained on this data ({trained_on[:12]})")
+        return f"models:/{name}@{registry.CHAMPION_ALIAS}"
 
-    if not args.skip_registration:
-        mlflow.set_registry_uri("databricks-uc")
+    model = ProjectionModel.fit(history)
     mlflow.set_experiment(args.experiment)
-    registered_name = f"{args.catalog}.{args.schema}.{MODEL_NAME}"
     season, week = prepared.upcoming
     with mlflow.start_run(run_name=f"fantasy-projection-{season}-w{week:02d}") as run:
+        mlflow.set_tag(registry.FINGERPRINT_TAG, trained_on)
         mlflow.log_params(
             {
                 "upcoming_week": f"{season}-{week:02d}",
@@ -96,18 +122,11 @@ def run_task(argv: list[str] | None = None) -> str | None:
             path = Path(tmp) / "backtest_metrics.csv"
             metrics.to_csv(path, index=False)
             mlflow.log_artifact(str(path))
-        info = registry.log_model(
-            model,
-            upcoming_rows(prepared),
-            None if args.skip_registration else registered_name,
-        )
-        if not args.skip_registration:
-            version = info.registered_model_version
-            MlflowClient().set_registered_model_alias(registered_name, "champion", version)
-            print(f"run {run.info.run_id}: registered {registered_name} v{version} as champion")
-        else:
-            print(f"run {run.info.run_id}: logged {info.model_uri}")
-    return str(info.model_uri)
+        info = registry.log_model(model, upcoming_rows(prepared), name)
+        version = str(info.registered_model_version)
+        registry.promote(client, name, version, trained_on)
+        print(f"run {run.info.run_id}: registered {name} v{version} as champion")
+    return f"models:/{name}@{registry.CHAMPION_ALIAS}"
 
 
 def main(argv: list[str] | None = None) -> int:

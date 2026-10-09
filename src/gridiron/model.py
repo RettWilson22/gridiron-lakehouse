@@ -23,16 +23,19 @@ the reasons, for the record:
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from typing import Any, Final, TypeAlias
 
 import numpy as np
 import pandas as pd
+import sklearn
 from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import HistGradientBoostingRegressor
 
+import gridiron
 from gridiron.config import POSITIONS
-from gridiron.features import COMPONENTS, FEATURES
+from gridiron.features import COMPONENTS, FEATURES, KEY
 from gridiron.scoring import PRESETS, UNIT_VALUES
 
 SKILL_COMPONENTS: Final = (
@@ -85,9 +88,49 @@ HGB_PARAMS: Final[dict[str, Any]] = {
 }
 FORMATS: Final = ("ppr", "half", "std")
 FORMAT_PRESETS: Final = {"ppr": "ppr", "half": "half", "std": "standard"}
+# Columns ``ProjectionModel.predict`` returns, in order.
+OUTPUT_COLUMNS: Final = (
+    *(f"proj_{c}" for c in COMPONENTS),
+    *(f"proj_{fmt}" for fmt in FORMATS),
+    *(f"{kind}_{fmt}" for fmt in FORMATS for kind in ("floor", "ceiling")),
+)
+TARGET: Final = "fantasy_points_ppr"
+# Everything in a frame that a fit or a projection depends on (see ``fingerprint``).
+FINGERPRINT_COLUMNS: Final = (*KEY, "position", *FEATURES, *COMPONENTS, TARGET)
 
 # scikit-learn regressors (HistGradientBoostingRegressor or DummyRegressor); untyped.
 Estimator: TypeAlias = Any
+
+
+def fingerprint(*frames: pd.DataFrame) -> str:
+    """sha256 of the inputs that decide a model and its projections.
+
+    Covers, for each frame, the key, position, feature, stat-component and target columns
+    (rows in key order, so row order does not matter), plus the model settings and the
+    ``gridiron`` and scikit-learn versions. Two fits with the same fingerprint give the same
+    model, so a stored result can be reused instead of refitting. Bump the package version
+    when the model code changes in a way the settings do not show.
+    """
+    digest = hashlib.sha256()
+    for frame in frames:
+        rows = frame.sort_values(KEY)[list(FINGERPRINT_COLUMNS)]
+        rows = rows.astype({"season": "int64", "week": "int64", "player_id": str, "position": str})
+        numeric = [c for c in FINGERPRINT_COLUMNS if c not in (*KEY, "position")]
+        rows[numeric] = rows[numeric].astype("float64")
+        digest.update(f"{len(rows)} rows\n".encode())
+        digest.update(pd.util.hash_pandas_object(rows, index=False).to_numpy().tobytes())
+    settings = (
+        HGB_PARAMS,
+        POSITION_COMPONENTS,
+        sorted(COUNT_COMPONENTS),
+        BAND_BINS,
+        BAND_QUANTILES,
+        FEATURES,
+        gridiron.__version__,
+        sklearn.__version__,
+    )
+    digest.update(repr(settings).encode())
+    return digest.hexdigest()
 
 
 def _fit_component(component: str, x: pd.DataFrame, y: pd.Series) -> Estimator:

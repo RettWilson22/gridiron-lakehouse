@@ -78,10 +78,15 @@ def before(frame: pd.DataFrame, week: tuple[int, int]) -> pd.DataFrame:
 
 
 def run_backtest(
-    prepared: Prepared, test_seasons: Iterable[int], now: pd.Timestamp
+    prepared: Prepared,
+    test_seasons: Iterable[int],
+    now: pd.Timestamp,
+    stored: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Walk-forward projections for the test seasons and the current season's completed
-    weeks, and the accuracy metrics for the test seasons."""
+    weeks, and the accuracy metrics for the test seasons. ``stored`` is the previous run's
+    ``backtest_projections``; seasons whose data did not change reuse it instead of refitting
+    (see ``backtest.walk_forward``)."""
     test_seasons = sorted(set(test_seasons))
     seasons = list(test_seasons)
     limits: dict[int, int] = {}
@@ -89,7 +94,7 @@ def run_backtest(
         current, week = prepared.upcoming
         seasons.append(current)
         limits[current] = week
-    projected = bt.walk_forward(prepared.frame, seasons, limits)
+    projected = bt.walk_forward(prepared.frame, seasons, limits, stored)
     metrics = bt.evaluate(projected, prepared.tables["ecr"], test_seasons)
     published = pd.concat(
         [
@@ -101,12 +106,23 @@ def run_backtest(
     return published, metrics
 
 
-def train_live(prepared: Prepared) -> ProjectionModel:
-    """Model for the upcoming week: every completed week before it."""
+def reused_versions(stored: pd.DataFrame | None, published: pd.DataFrame) -> list[str]:
+    """Backtest model versions present in both the stored and the new projections."""
+    if stored is None or "model_version" not in stored:
+        return []
+    return sorted(set(published["model_version"]) & set(stored["model_version"]))
+
+
+def live_history(prepared: Prepared) -> pd.DataFrame:
+    """Training rows for the upcoming week's model: every completed week before it."""
     if prepared.upcoming is None:
         raise ValueError("no upcoming week to train for")
-    history = bt.completed(before(prepared.frame, prepared.upcoming))
-    return ProjectionModel.fit(history)
+    return bt.completed(before(prepared.frame, prepared.upcoming))
+
+
+def train_live(prepared: Prepared) -> ProjectionModel:
+    """Model for the upcoming week: every completed week before it."""
+    return ProjectionModel.fit(live_history(prepared))
 
 
 def upcoming_rows(prepared: Prepared) -> pd.DataFrame:

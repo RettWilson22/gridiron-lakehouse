@@ -5,9 +5,11 @@ Reads the Parquet output of ``run_local_pipeline.py`` and does what the Databric
 
     python scripts/run_local_model.py --lakehouse-dir data/lakehouse
 
-Writes ``projections``, ``live_projections``, ``risers`` and ``backtest_metrics`` Parquet
-files next to the inputs, and the metrics to ``artifacts/backtest_metrics.json``.
-Re-running keeps live projections for games that have already kicked off.
+Writes ``backtest_projections``, ``projections``, ``live_projections``, ``risers`` and
+``backtest_metrics`` Parquet files next to the inputs, and the metrics to
+``artifacts/backtest_metrics.json``. Re-running keeps live projections for games that have
+already kicked off, and reuses the stored backtest projections of every season whose data
+did not change instead of refitting it.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from gridiron.workflow import (
     DEFAULT_TEST_SEASONS,
     prepare,
     publish,
+    reused_versions,
     run_backtest,
     score_live,
     train_live,
@@ -52,8 +55,15 @@ def main(argv: list[str] | None = None) -> int:
 
     prepared = prepare(read)
     print(f"feature rows: {len(prepared.frame)}; upcoming week: {prepared.upcoming}")
-    backtest_projections, metrics = run_backtest(prepared, args.test_seasons, now)
-    print(f"backtest projections: {len(backtest_projections)} rows")
+    stored_path = args.lakehouse_dir / "backtest_projections.parquet"
+    stored = pd.read_parquet(stored_path) if stored_path.exists() else None
+    backtest_projections, metrics = run_backtest(prepared, args.test_seasons, now, stored)
+    reused = reused_versions(stored, backtest_projections)
+    seasons = backtest_projections["model_version"].nunique()
+    print(
+        f"backtest projections: {len(backtest_projections)} rows; reused {len(reused)} of "
+        f"{seasons} seasons"
+    )
 
     live_path = args.lakehouse_dir / "live_projections.parquet"
     existing = pd.read_parquet(live_path) if live_path.exists() else None
@@ -67,6 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     projections, risers = publish(prepared, backtest_projections, live)
 
     outputs = {
+        "backtest_projections": backtest_projections,
         "projections": projections,
         "risers": risers,
         "backtest_metrics": metrics,

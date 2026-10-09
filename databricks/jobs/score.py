@@ -17,11 +17,9 @@ import pandas as pd
 from mlflow.tracking import MlflowClient
 from pyspark.sql import SparkSession
 
-from gridiron.registry import model_input
+from gridiron.registry import CHAMPION_ALIAS, model_input, registered_name
 from gridiron.spark_io import read_table, write_table
 from gridiron.workflow import prepare, publish, score_live
-
-MODEL_NAME = "fantasy_projection"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -32,6 +30,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--model-uri",
         default=None,
         help="defaults to models:/<catalog>.<schema>.fantasy_projection@champion",
+    )
+    parser.add_argument(
+        "--registry-uri",
+        default="databricks-uc",
+        help="MLflow model registry (a local file store in smoke runs)",
     )
     return parser.parse_args(argv)
 
@@ -56,10 +59,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.model_uri:
             uri, version = args.model_uri, args.model_uri
         else:
-            mlflow.set_registry_uri("databricks-uc")
-            name = f"{args.catalog}.{args.schema}.{MODEL_NAME}"
-            champion = MlflowClient().get_model_version_by_alias(name, "champion")
-            uri, version = f"models:/{name}@champion", f"{name} v{champion.version}"
+            mlflow.set_registry_uri(args.registry_uri)
+            name = registered_name(args.catalog, args.schema)
+            champion = MlflowClient().get_model_version_by_alias(name, CHAMPION_ALIAS)
+            uri, version = f"models:/{name}@{CHAMPION_ALIAS}", f"{name} v{champion.version}"
         model = mlflow.pyfunc.load_model(uri)
         live = score_live(
             prepared, lambda rows: model.predict(model_input(rows)), version, existing, now
