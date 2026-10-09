@@ -1,6 +1,6 @@
 -- 01_create_streamlit.sql
 -- Run as GRIDIRON_ADMIN with the Snowflake CLI (snow sql -f) from the repository root;
--- PUT needs a client. In Snowsight, upload the four files to the stage instead.
+-- PUT needs a client. In Snowsight, upload the five files to the stage instead.
 -- Requires the dbt marts (MARTS schema) and APP.FANTASY_POINTS (snowpark/01_create_udf.sql).
 
 USE ROLE GRIDIRON_ADMIN;
@@ -15,6 +15,7 @@ PUT file://snowflake/streamlit/data_access.py @APP.STREAMLIT_STAGE/cheat_sheet A
 PUT file://snowflake/streamlit/environment.yml @APP.STREAMLIT_STAGE/cheat_sheet AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
 -- Tiering helper shared with the Databricks score task (standard library only).
 PUT file://src/gridiron/tiers.py @APP.STREAMLIT_STAGE/cheat_sheet AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
+PUT file://src/gridiron/player_search.py @APP.STREAMLIT_STAGE/cheat_sheet AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
 
 CREATE OR REPLACE STREAMLIT APP.FANTASY_CHEAT_SHEET
   FROM '@GRIDIRON.APP.STREAMLIT_STAGE/cheat_sheet'

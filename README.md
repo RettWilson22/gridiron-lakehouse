@@ -8,7 +8,7 @@ Snowflake.
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/live%20demo-streamlit-ff4b4b.svg)](https://gridiron-lakehouse.streamlit.app)
 
-![A 20-second tour of the app: cheat sheet, start/sit, risers and track record](docs/images/demo.gif)
+![A short tour of the app: the cheat sheet, a player index search for "cmc" and "lions wr", start/sit, risers and the track record](docs/images/demo.gif)
 
 **Live demo: https://gridiron-lakehouse.streamlit.app**, a public, read-only copy of the
 Streamlit in Snowflake app. It reads a static snapshot of the marts exported from
@@ -50,7 +50,7 @@ caveats: [docs/methodology.md](docs/methodology.md).
   volume); Snowflake SQL for the warehouse, cost monitor, roles, UDF, stream, task and app;
   DDL generated from the table contracts; a dbt project with Snowflake and DuckDB targets.
 * **CI on every push to main.** Ruff, strict mypy, a generated-SQL freshness check, a dbt build and
-  its tests on DuckDB fixtures, and 131 pytest tests, including the pipeline on local Spark
+  its tests on DuckDB fixtures, and 152 pytest tests, including the pipeline on local Spark
   and headless tests of the Streamlit app.
 
 ## Why both platforms?
@@ -129,8 +129,12 @@ for the cheat sheet, risers, game logs and the accuracy record. `APP.FANTASY_POI
 Python UDF that rescores a stat line under any league's scoring, using the same
 `scoring.py` as Databricks. A stream on `SYNCED.PLAYER_WEEK` and a task rebuild
 projected-vs-actual results only for weeks whose results changed. The Streamlit in
-Snowflake app has a cheat sheet, a start/sit comparison, risers and a track record; the
-public copy runs the same code against a Parquet snapshot of the marts.
+Snowflake app has a cheat sheet, a player index, a start/sit comparison, risers and a track
+record; the public copy runs the same code against a Parquet snapshot of the marts. The
+player index search ([`player_search.py`](src/gridiron/player_search.py)) handles partial
+and last-name-first queries, initials ("jsn"), nicknames ("cmc"), close spellings
+("mccaffery") and team or position words ("lions wr"), and ranks ties by this week's
+projection.
 
 ## Quickstart
 

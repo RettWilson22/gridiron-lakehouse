@@ -60,8 +60,14 @@ def sheet(app: AppTest) -> pd.DataFrame:
 
 
 def test_cheat_sheet_renders_the_upcoming_week(app: AppTest) -> None:
-    assert app.title[0].value == "Fantasy Football Cheat Sheet"
-    assert len(app.tabs) == 4
+    assert app.header[0].value.endswith("cheat sheet")
+    assert list(app.radio(key="section").options) == [
+        "Cheat sheet",
+        "Player index",
+        "Start / Sit",
+        "Risers",
+        "Track record",
+    ]
     assert "(upcoming)" in str(app.sidebar.selectbox[0].format_func(app.sidebar.selectbox[0].value))
     table = sheet(app)
     assert not table.empty
@@ -97,15 +103,64 @@ def test_custom_scoring_reranks_with_the_scoring_handler(app: AppTest) -> None:
     assert custom.is_monotonic_decreasing
 
 
-def test_start_sit_and_other_tabs(app: AppTest) -> None:
+def open_section(app: AppTest, name: str) -> None:
+    app.radio(key="section").set_value(name).run()
+    assert not app.exception
+
+
+def test_start_sit_and_other_sections(app: AppTest) -> None:
+    open_section(app, "Start / Sit")
     compare = app.multiselect(key="compare")
     options = compare.options[:2]
     compare.set_value(options).run()
     assert not app.exception
     assert any(md.value.startswith("**Start ") for md in app.markdown)
+    open_section(app, "Risers")
     app.toggle(key="all_changes").set_value(True).run()
+    open_section(app, "Track record")
     app.selectbox(key="scope").set_value(app.selectbox(key="scope").options[-1]).run()
     app.radio(key="record_position").set_value("TE").run()
+    assert not app.exception
+
+
+def card_names(app: AppTest) -> list[str]:
+    return [md.value for md in app.markdown if "gl-card-name" in md.value]
+
+
+def index_table(app: AppTest) -> pd.DataFrame:
+    frame: pd.DataFrame = next(df.value for df in app.dataframe if "Found by" in df.value.columns)
+    return frame
+
+
+def test_cheat_sheet_search_understands_initials(app: AppTest) -> None:
+    app.radio(key="position").set_value("WR").run()
+    app.text_input(key="search").set_value("arsb").run()
+    assert not app.exception
+    assert list(sheet(app)["Player"]) == ["Amon-Ra St. Brown"]
+
+
+def test_player_index_finds_players_and_opens_a_card(app: AppTest) -> None:
+    open_section(app, "Player index")
+    app.text_input(key="index_query").set_value("jeferson").run()  # misspelled
+    assert not app.exception
+    assert index_table(app)["Player"].iloc[0] == "Justin Jefferson"
+    assert any("Justin Jefferson" in name for name in card_names(app))
+
+    app.text_input(key="index_query").set_value("lions wr").run()
+    assert not app.exception
+    found = index_table(app)
+    assert set(found["Team"]) == {"DET"} and set(found["Pos"]) == {"WR"}
+    assert app.radio(key="section").value == "Player index"  # stays put across reruns
+
+
+def test_player_index_suggests_a_spelling_and_browses_by_letter(app: AppTest) -> None:
+    open_section(app, "Player index")
+    app.text_input(key="index_query").set_value("jared gofff qq").run()
+    assert not app.exception
+    app.text_input(key="index_query").set_value("").run()
+    letters = app.radio(key="index_letter")
+    assert "S" in letters.options
+    letters.set_value("S").run()
     assert not app.exception
 
 
