@@ -1,8 +1,16 @@
 -- 01_catalog_integration.sql
+-- Iceberg path, for Databricks workspaces with external storage. NOT the path used with
+-- Databricks Free Edition: there the metastore uses privilege model 1.0, so EXTERNAL USE
+-- SCHEMA is not applicable, and the Unity Catalog Iceberg REST endpoint returns table
+-- metadata but no vended storage credentials for tables on Databricks default storage, so
+-- Snowflake cannot read the data files. Free Edition uses the sync instead
+-- (snowflake/sync/ and scripts/sync_to_snowflake.py). Kept, and documented in the README,
+-- for paid workspaces whose serving schema lives on external storage.
+--
 -- Run as ACCOUNTADMIN. Connects Snowflake to Databricks Unity Catalog's Iceberg REST
 -- catalog so Snowflake reads the UniForm serving tables in place (no data copy).
 --
--- Databricks side, before running this (details in the README):
+-- Databricks side, before running this:
 --   1. Metastore setting "External data access" is enabled.
 --   2. The principal below has USE CATALOG on <DATABRICKS_CATALOG>, and USE SCHEMA,
 --      EXTERNAL USE SCHEMA and SELECT on <DATABRICKS_SERVING_SCHEMA>.
@@ -10,11 +18,8 @@
 --
 -- Placeholders:
 --   <DATABRICKS_HOST>            workspace host, e.g. dbc-1234abcd-5678.cloud.databricks.com
---                                (Databricks recommends the URL form that includes the
---                                workspace ID if requests are redirected to a login page)
---   <DATABRICKS_CATALOG>         Unity Catalog catalog, `workspace` on Free Edition
---   <DATABRICKS_SERVING_SCHEMA>  `gridiron_serving` (prod target) or
---                                `dev_<user>_gridiron_serving` (dev target)
+--   <DATABRICKS_CATALOG>         Unity Catalog catalog
+--   <DATABRICKS_SERVING_SCHEMA>  `gridiron_serving` (prod target)
 --   <DATABRICKS_PAT>             personal access token of the principal in step 2
 --
 -- Option A (simplest, works with a personal access token): bearer authentication.
