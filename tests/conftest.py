@@ -7,10 +7,14 @@ import pandas as pd
 import pytest
 from pyspark.sql import DataFrame, SparkSession
 
-from gridiron import transforms
+from gridiron.config import FIRST_SEASON
+from gridiron.lakehouse import build_gold, build_silver, read_landing
 from gridiron.local_spark import local_session
+from gridiron.workflow import Prepared, prepare
 
 FIXTURES = Path(__file__).parent / "fixtures"
+LANDING = FIXTURES / "landing"
+GOLD = FIXTURES / "gold"
 REPO_ROOT = Path(__file__).parent.parent
 
 
@@ -23,25 +27,26 @@ def spark() -> Iterator[SparkSession]:
 
 
 @pytest.fixture(scope="session")
-def sample_pdf() -> pd.DataFrame:
-    return pd.read_parquet(FIXTURES / "pbp_sample.parquet")
+def bronze(spark: SparkSession) -> dict[str, DataFrame]:
+    return read_landing(spark, LANDING)
 
 
 @pytest.fixture(scope="session")
-def bronze(spark: SparkSession) -> DataFrame:
-    return transforms.with_ingest_metadata(spark.read.parquet(str(FIXTURES / "pbp_sample.parquet")))
+def silver(bronze: dict[str, DataFrame]) -> dict[str, DataFrame]:
+    return {name: df.cache() for name, df in build_silver(bronze, FIRST_SEASON).items()}
 
 
 @pytest.fixture(scope="session")
-def plays(bronze: DataFrame) -> DataFrame:
-    return transforms.silver_plays(bronze).cache()
+def gold(silver: dict[str, DataFrame]) -> dict[str, DataFrame]:
+    return {name: df.cache() for name, df in build_gold(silver).items()}
 
 
 @pytest.fixture(scope="session")
-def decisions(plays: DataFrame) -> DataFrame:
-    return transforms.fourth_down_decisions(plays).cache()
+def tables(silver: dict[str, DataFrame], gold: dict[str, DataFrame]) -> dict[str, pd.DataFrame]:
+    """Every silver and gold table built from the landing fixture, as pandas."""
+    return {name: df.toPandas() for name, df in {**silver, **gold}.items()}
 
 
 @pytest.fixture(scope="session")
-def decisions_pdf(decisions: DataFrame) -> pd.DataFrame:
-    return decisions.toPandas()
+def prepared(tables: dict[str, pd.DataFrame]) -> Prepared:
+    return prepare(lambda name: tables[name].copy())

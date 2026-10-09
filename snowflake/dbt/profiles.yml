@@ -4,13 +4,14 @@
 gridiron:
   target: ci
   outputs:
-    # Fixture data (three games) in DuckDB. Used by CI and the unit-test style dbt build.
+    # Fixture data (NFC North games, tests/fixtures/gold) in DuckDB. Used by CI and the
+    # Streamlit app test.
     ci:
       type: duckdb
       path: "{{ env_var('DBT_DUCKDB_PATH', 'ci.duckdb') }}"
       threads: 4
 
-    # Full local lakehouse output in DuckDB, for the local Streamlit app:
+    # Full local run (data/lakehouse) in DuckDB, for the local Streamlit app:
     #   dbt build --target local --vars '{gold_dir: ../../data/lakehouse}'
     local:
       type: duckdb

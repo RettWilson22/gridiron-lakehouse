@@ -8,6 +8,7 @@ from gridiron.snowflake_sql import (
     PRIMARY_KEYS,
     create_table_sql,
     delete_missing_sql,
+    iceberg_table_sql,
     iceberg_view_sql,
     merge_sql,
     sf_ident,
@@ -48,30 +49,43 @@ def test_identifiers_are_upper_cased_and_validated() -> None:
         sf_ident('x"; DROP TABLE y; --')
 
 
-SCHEMA = pa.schema([("season", pa.int32()), ("team", pa.string()), ("go_rate", pa.float64())])
+SCHEMA = pa.schema(
+    [
+        ("season", pa.int32()),
+        ("week", pa.int32()),
+        ("team", pa.string()),
+        ("implied_points", pa.float64()),
+    ]
+)
 
 
 def test_create_table_sql() -> None:
-    sql = create_table_sql("synced", "team_season_summary", SCHEMA)
-    assert sql.startswith("CREATE TABLE IF NOT EXISTS SYNCED.TEAM_SEASON_SUMMARY (")
-    assert "    GO_RATE FLOAT," in sql
-    assert "PRIMARY KEY (SEASON, TEAM)" in sql
+    sql = create_table_sql("synced", "team_week", SCHEMA)
+    assert sql.startswith("CREATE TABLE IF NOT EXISTS SYNCED.TEAM_WEEK (")
+    assert "    IMPLIED_POINTS FLOAT," in sql
+    assert "PRIMARY KEY (SEASON, WEEK, TEAM)" in sql
+
+
+def test_iceberg_table_points_at_the_lower_case_catalog_name() -> None:
+    sql = iceberg_table_sql("ICEBERG_RAW", "team_week", "GRIDIRON_UNITY_CATALOG")
+    assert sql.startswith("CREATE ICEBERG TABLE IF NOT EXISTS ICEBERG_RAW.TEAM_WEEK")
+    assert "CATALOG_TABLE_NAME = 'team_week'" in sql
 
 
 def test_iceberg_view_maps_lower_case_columns() -> None:
-    sql = iceberg_view_sql("ICEBERG", "ICEBERG_RAW", "team_season_summary", SCHEMA)
-    assert '"go_rate" AS GO_RATE' in sql
-    assert sql.endswith("FROM ICEBERG_RAW.TEAM_SEASON_SUMMARY;")
+    sql = iceberg_view_sql("ICEBERG", "ICEBERG_RAW", "team_week", SCHEMA)
+    assert '"implied_points" AS IMPLIED_POINTS' in sql
+    assert sql.endswith("FROM ICEBERG_RAW.TEAM_WEEK;")
 
 
 def test_merge_only_updates_changed_rows() -> None:
     sql = merge_sql(
-        "SYNCED.T", "SYNCED.T__STAGE", ["season", "team", "go_rate"], ("season", "team")
+        "SYNCED.T", "SYNCED.T__STAGE", ["season", "team", "proj_ppr"], ("season", "team")
     )
     assert "ON t.SEASON = s.SEASON AND t.TEAM = s.TEAM" in sql
-    assert "WHEN MATCHED AND (NOT EQUAL_NULL(t.GO_RATE, s.GO_RATE))" in sql
-    assert "UPDATE SET GO_RATE = s.GO_RATE" in sql
-    assert "INSERT (SEASON, TEAM, GO_RATE) VALUES (s.SEASON, s.TEAM, s.GO_RATE)" in sql
+    assert "WHEN MATCHED AND (NOT EQUAL_NULL(t.PROJ_PPR, s.PROJ_PPR))" in sql
+    assert "UPDATE SET PROJ_PPR = s.PROJ_PPR" in sql
+    assert "INSERT (SEASON, TEAM, PROJ_PPR) VALUES (s.SEASON, s.TEAM, s.PROJ_PPR)" in sql
 
 
 def test_merge_rejects_unknown_keys() -> None:
@@ -80,9 +94,9 @@ def test_merge_rejects_unknown_keys() -> None:
 
 
 def test_delete_missing_sql() -> None:
-    assert delete_missing_sql("SYNCED.T", "SYNCED.S", ("game_id",)) == (
+    assert delete_missing_sql("SYNCED.T", "SYNCED.S", ("player_id",)) == (
         "DELETE FROM SYNCED.T t WHERE NOT EXISTS "
-        "(SELECT 1 FROM SYNCED.S s WHERE s.GAME_ID = t.GAME_ID)"
+        "(SELECT 1 FROM SYNCED.S s WHERE s.PLAYER_ID = t.PLAYER_ID)"
     )
 
 

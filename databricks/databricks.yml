@@ -37,14 +37,11 @@ variables:
     description: Schema holding the UniForm tables Snowflake reads.
     default: gridiron_serving
   first_season:
-    description: First season to ingest.
-    default: "2015"
-  last_train_season:
-    description: Last season used to train the model; later seasons are held out.
-    default: "2023"
+    description: First season to ingest and keep in silver.
+    default: "2018"
   test_seasons:
-    description: Completed held-out seasons used for evaluation (comma separated).
-    default: "2024,2025"
+    description: Completed seasons scored by the walk-forward backtest (comma separated).
+    default: "2023,2024,2025"
 
 targets:
   # Development mode prefixes resource names, including the schemas, with

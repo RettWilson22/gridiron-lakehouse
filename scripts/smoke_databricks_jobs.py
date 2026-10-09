@@ -1,9 +1,10 @@
 """Smoke-test the Databricks job entry points against a local Spark catalog.
 
-Loads the local lakehouse parquet output into a local Spark database, then runs the real
-``train_and_score`` and ``publish_serving`` entry points against it with a local MLflow
-tracking store and registration disabled. This checks the wiring (table names, pandas <->
-Spark conversion, MLflow logging, publish SQL) without a Databricks workspace.
+Loads the local lakehouse Parquet output into a local Spark database, then runs the real
+``train``, ``score`` and ``publish_serving`` entry points against it with a local MLflow
+tracking store and Unity Catalog registration disabled. This checks the wiring (table
+names, pandas <-> Spark conversion, MLflow logging and loading, publish SQL) without a
+Databricks workspace.
 
     python scripts/smoke_databricks_jobs.py --lakehouse-dir data/lakehouse
 """
@@ -19,6 +20,7 @@ from pathlib import Path
 from types import ModuleType
 
 from gridiron.local_spark import local_session
+from gridiron.workflow import INPUT_TABLES
 
 JOBS = Path(__file__).resolve().parent.parent / "databricks" / "jobs"
 
@@ -34,6 +36,7 @@ def load_job(name: str) -> ModuleType:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lakehouse-dir", type=Path, default=Path("data/lakehouse"))
+    parser.add_argument("--test-seasons", default="2025", help="kept short for a smoke run")
     args = parser.parse_args(argv)
 
     work = Path(tempfile.mkdtemp(prefix="gridiron-smoke-"))
@@ -47,25 +50,31 @@ def main(argv: list[str] | None = None) -> int:
     spark.conf.set("spark.sql.execution.arrow.pyspark.fallback.enabled", "false")
     spark.sql("CREATE DATABASE IF NOT EXISTS gridiron")
     spark.sql("CREATE DATABASE IF NOT EXISTS gridiron_serving")
-    for name in ("plays", "fourth_down_decisions", "team_season_summary", "game_summary"):
+    for name in INPUT_TABLES:
         spark.read.parquet(str(args.lakehouse_dir / f"{name}.parquet")).write.mode(
             "overwrite"
         ).saveAsTable(f"gridiron.{name}")
 
     common = ["--catalog", "spark_catalog", "--schema", "gridiron"]
-    load_job("train_and_score").main(
+    train = load_job("train")
+    train.main(
         [
             *common,
             "--experiment",
             "gridiron-smoke",
-            "--model-dir",
-            str(work / "models"),
+            "--test-seasons",
+            args.test_seasons,
             "--skip-registration",
         ]
     )
-    load_job("publish_serving").main([*common, "--serving-schema", "gridiron_serving"])
+    score = load_job("score")
+    score.main([*common, "--model-uri", str(train.LAST_MODEL_URI)])
+    # A second score run must keep the stored live projections stable.
+    score.main([*common, "--model-uri", str(train.LAST_MODEL_URI)])
+    publish = load_job("publish_serving")
+    publish.main([*common, "--serving-schema", "gridiron_serving"])
     # Second publish exercises the refresh path (table already exists).
-    load_job("publish_serving").main([*common, "--serving-schema", "gridiron_serving"])
+    publish.main([*common, "--serving-schema", "gridiron_serving"])
     for row in spark.sql("SHOW TABLES IN gridiron_serving").collect():
         count = spark.table(f"gridiron_serving.{row.tableName}").count()
         print(f"gridiron_serving.{row.tableName}: {count} rows")

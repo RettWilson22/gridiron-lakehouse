@@ -1,4 +1,4 @@
-"""Job task: publish gold tables as UniForm (Iceberg-readable) tables for Snowflake."""
+"""Job task: publish the serving datasets as UniForm (Iceberg-readable) tables."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import sys
 
 from pyspark.sql import SparkSession
 
-from gridiron.serving import SERVING_TABLES, publish_statements
+from gridiron.serving import SERVING_TABLES, publish_statements, qualified
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -19,9 +19,25 @@ def main(argv: list[str] | None = None) -> int:
 
     spark = SparkSession.builder.getOrCreate()
     for table in SERVING_TABLES:
-        for statement in publish_statements(args.catalog, args.schema, args.serving_schema, table):
+        target = qualified(args.catalog, args.serving_schema, table)
+        source_columns = spark.read.table(qualified(args.catalog, args.schema, table)).columns
+        existing = (
+            spark.read.table(target).columns
+            if spark.catalog.tableExists(f"{args.catalog}.{args.serving_schema}.{table}")
+            else None
+        )
+        statements = publish_statements(
+            args.catalog,
+            args.schema,
+            args.serving_schema,
+            table,
+            existing_columns=existing,
+            source_columns=source_columns,
+        )
+        for statement in statements:
             spark.sql(statement)
-        print(f"published {args.catalog}.{args.serving_schema}.{table}")
+        action = "replaced" if len(statements) == 1 else "refreshed"
+        print(f"{action} {args.catalog}.{args.serving_schema}.{table}")
     return 0
 
 

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gridiron"
-version = "0.1.0"
-description = "NFL fourth-down decision lakehouse: Databricks for ingestion, transformation and ML; Snowflake for serving."
+version = "0.2.0"
+description = "Fantasy football projections and weekly cheat sheet: Databricks for ingestion, transformation and ML; Snowflake for serving."
 readme = "README.md"
 license = "MIT"
 authors = [{ name = "Rett Wilson" }]
@@ -20,7 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 spark = ["pyspark>=4.0"]
-ml = ["mlflow-skinny>=3.1", "skops>=0.10"]
+ml = ["mlflow-skinny>=3.1"]
 sync = ["databricks-sql-connector>=3.4", "databricks-sdk>=0.40", "snowflake-connector-python[pandas]>=3.12"]
 app = ["streamlit>=1.38", "duckdb>=1.1", "altair>=5"]
 dev = [
@@ -44,7 +44,7 @@ extend-exclude = ["snowflake/dbt/target", "snowflake/dbt/dbt_packages"]
 select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "RUF", "PL", "C4"]
 ignore = [
     "PLR0913", # data functions legitimately take several keyword arguments
-    "PLR2004", # football constants (4th down, 10 yards) read better inline
+    "PLR2004", # football constants (the red zone, 12-team leagues) read better inline
     "N812",    # `functions as F` is the PySpark convention
     "SIM108",  # an if/else block is often clearer than a long ternary
 ]
@@ -67,13 +67,11 @@ files = [
     "tests",
     "databricks/jobs",
     "databricks/pipelines",
-    "snowflake/snowpark",
-    "snowflake/streamlit",
 ]
 strict = true
 warn_unused_ignores = true
 explicit_package_bases = true
-mypy_path = "src:snowflake/streamlit"
+mypy_path = "src"
 
 [[tool.mypy.overrides]]
 # Third-party libraries without type information.
@@ -87,6 +85,7 @@ module = [
     "altair.*",
     "duckdb.*",
     "pyarrow.*",
+    "joblib.*",
 ]
 ignore_missing_imports = true
 

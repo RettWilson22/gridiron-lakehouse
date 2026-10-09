@@ -1,9 +1,0 @@
-# Packages for Streamlit in Snowflake (warehouse runtime, Snowflake Anaconda channel).
-name: sf_env
-channels:
-  - snowflake
-dependencies:
-  # Pinned: the warehouse runtime's default Streamlit is too old for st.dataframe(hide_index=...).
-  - streamlit=1.52.2
-  - altair
-  - pandas

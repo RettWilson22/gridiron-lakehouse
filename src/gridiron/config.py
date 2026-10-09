@@ -1,69 +1,23 @@
-"""Shared constants: source location, season range and the silver column contract."""
+"""Shared constants: season range, positions and the in-progress season."""
 
 from __future__ import annotations
 
 import datetime as dt
 from typing import Final
 
-NFLVERSE_PBP_URL: Final = (
-    "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{season}.parquet"
-)
+# Every source used here covers 2018 onward; five seasons of history before the first
+# backtest season (2023) is enough for the walk-forward evaluation.
+FIRST_SEASON: Final = 2018
 
-# nflverse play-by-play with full nflfastR fields starts in 1999; this project uses the
-# modern era by default.
-FIRST_SEASON: Final = 2015
+# Fantasy positions modelled. Fullbacks are folded into RB (nflverse position group).
+POSITIONS: Final = ("QB", "RB", "WR", "TE")
 
-# Columns kept in silver. Everything else in the ~370 column source is dropped.
-# Types are the Spark SQL types the silver layer casts to.
-SILVER_COLUMNS: Final[dict[str, str]] = {
-    "game_id": "string",
-    "play_id": "bigint",
-    "season": "int",
-    "season_type": "string",
-    "week": "int",
-    "game_date": "date",
-    "home_team": "string",
-    "away_team": "string",
-    "home_coach": "string",
-    "away_coach": "string",
-    "posteam": "string",
-    "defteam": "string",
-    "posteam_type": "string",
-    "qtr": "int",
-    "down": "int",
-    "ydstogo": "int",
-    "yardline_100": "int",
-    "game_seconds_remaining": "int",
-    "score_differential": "int",
-    "posteam_timeouts_remaining": "int",
-    "play_type": "string",
-    "yards_gained": "int",
-    "first_down": "int",
-    "touchdown": "int",
-    "fourth_down_converted": "int",
-    "fourth_down_failed": "int",
-    "field_goal_result": "string",
-    "kick_distance": "int",
-    "return_yards": "int",
-    "touchback": "int",
-    "punt_blocked": "int",
-    "fixed_drive": "int",
-    "fixed_drive_result": "string",
-    "ep": "double",
-    "epa": "double",
-    "wp": "double",
-    "wpa": "double",
-    "home_score": "int",
-    "away_score": "int",
-    "total_home_score": "int",
-    "total_away_score": "int",
-}
+# Regular-season weeks only: fantasy seasons end before the playoffs.
+REGULAR_SEASON: Final = "REG"
 
-# Plays that count as "going for it" on fourth down. Fake punts and fake field goals are
-# recorded by nflverse as run or pass plays, so they count as going for it.
-GO_PLAY_TYPES: Final = ("run", "pass")
-PUNT_PLAY_TYPE: Final = "punt"
-FIELD_GOAL_PLAY_TYPE: Final = "field_goal"
+# Red-zone and goal-line opportunity thresholds (yards from the opponent end zone).
+RED_ZONE_YARDLINE: Final = 20
+GOAL_LINE_YARDLINE: Final = 5
 
 
 def current_season(today: dt.date | None = None) -> int:
