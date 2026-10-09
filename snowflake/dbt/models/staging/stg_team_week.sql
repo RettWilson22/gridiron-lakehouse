@@ -1,0 +1,20 @@
+select
+    {{ dbt.concat(["cast(season as " ~ dbt.type_string() ~ ")", "'-'", "cast(week as " ~ dbt.type_string() ~ ")", "'-'", "team"]) }} as team_week_key,
+    season,
+    week,
+    game_id,
+    team,
+    opponent,
+    is_home,
+    kickoff_at,
+    team_spread,
+    total_line,
+    implied_points,
+    points_for,
+    points_against,
+    is_final,
+    offensive_plays,
+    dropbacks,
+    rush_attempts,
+    red_zone_plays
+from {{ source('gold', 'team_week') }}

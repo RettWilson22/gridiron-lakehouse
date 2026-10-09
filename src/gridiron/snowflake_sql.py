@@ -16,11 +16,12 @@ from typing import Final
 import pyarrow as pa
 
 PRIMARY_KEYS: Final[dict[str, tuple[str, ...]]] = {
-    "fourth_down_decisions": ("game_id", "play_id"),
-    "fourth_down_scored": ("game_id", "play_id"),
-    "team_season_summary": ("season", "team"),
-    "game_summary": ("game_id",),
-    "coach_aggressiveness": ("season", "team"),
+    "player_week": ("season", "week", "player_id"),
+    "team_week": ("season", "week", "team"),
+    "defense_vs_position": ("season", "week", "team", "position"),
+    "projections": ("season", "week", "player_id"),
+    "risers": ("season", "week", "player_id"),
+    "backtest_metrics": ("scope", "position", "method"),
 }
 
 _SAFE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -55,6 +56,16 @@ def create_table_sql(schema: str, table: str, arrow_schema: pa.Schema) -> str:
     return (
         f"CREATE TABLE IF NOT EXISTS {sf_ident(schema)}.{sf_ident(table)} (\n"
         f"{columns},\n    PRIMARY KEY ({keys})\n);"
+    )
+
+
+def iceberg_table_sql(schema: str, table: str, catalog_integration: str) -> str:
+    """Externally managed Iceberg table over a Unity Catalog serving table (lower case)."""
+    return (
+        f"CREATE ICEBERG TABLE IF NOT EXISTS {sf_ident(schema)}.{sf_ident(table)}\n"
+        f"  CATALOG = '{sf_ident(catalog_integration)}'\n"
+        f"  CATALOG_TABLE_NAME = '{table}'\n"
+        f"  AUTO_REFRESH = TRUE;"
     )
 
 

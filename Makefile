@@ -3,10 +3,10 @@ PYTHON ?= python3.12
 VENV   ?= .venv
 BIN    := $(VENV)/bin
 DBT    := cd snowflake/dbt && ../../$(BIN)/dbt
-TARGET ?= dev
+TARGET ?= prod
 
 .PHONY: help setup lint format typecheck test sql-check dbt-ci dbt-local check \
-        ingest pipeline-local train-local fixtures smoke-jobs app \
+        ingest pipeline-local model-local local fixtures smoke-jobs \
         bundle-validate bundle-deploy bundle-run sync clean
 
 help:  ## List targets
@@ -37,29 +37,28 @@ sql-check:  ## Fail if generated Snowflake DDL is out of date
 dbt-ci:  ## dbt build on DuckDB against the checked-in fixtures
 	$(DBT) build --target ci --profiles-dir .
 
-dbt-local:  ## dbt build on DuckDB against the full local lakehouse (data/lakehouse)
+dbt-local:  ## dbt build on DuckDB against the full local run (data/lakehouse)
 	$(DBT) build --target local --profiles-dir . --vars '{gold_dir: ../../data/lakehouse}'
 
 check: lint typecheck sql-check dbt-ci test  ## Everything CI runs
 
-ingest:  ## Download nflverse seasons into data/landing (idempotent)
-	$(BIN)/python databricks/jobs/ingest.py --landing-dir data/landing
+ingest:  ## Download every dataset into data/landing (idempotent)
+	$(BIN)/python databricks/jobs/ingest.py --landing-root data/landing
 
-pipeline-local:  ## Run the bronze/silver/gold transformations locally into data/lakehouse
-	$(BIN)/python scripts/run_local_pipeline.py --landing-dir data/landing --out-dir data/lakehouse
+pipeline-local:  ## Bronze/silver/gold with local Spark into data/lakehouse
+	$(BIN)/python scripts/run_local_pipeline.py --landing-root data/landing --out-dir data/lakehouse
 
-train-local:  ## Train/evaluate the model locally; writes artifacts/ and scored tables
-	$(BIN)/python scripts/train_local.py --lakehouse-dir data/lakehouse
+model-local:  ## Backtest, live projections and risers into data/lakehouse
+	$(BIN)/python scripts/run_local_model.py --lakehouse-dir data/lakehouse
+
+local: ingest pipeline-local model-local dbt-local  ## The whole flow on a laptop
 
 fixtures:  ## Rebuild checked-in test fixtures and generated SQL from local data
-	$(BIN)/python scripts/build_fixtures.py --landing-dir data/landing
+	$(BIN)/python scripts/build_fixtures.py --landing-root data/landing --lakehouse-dir data/lakehouse
 	$(BIN)/python scripts/generate_snowflake_sql.py
 
 smoke-jobs:  ## Run the Databricks job entry points against a local Spark catalog
 	$(BIN)/python scripts/smoke_databricks_jobs.py --lakehouse-dir data/lakehouse
-
-app:  ## Run the Streamlit app locally against the DuckDB marts
-	$(BIN)/streamlit run snowflake/streamlit/streamlit_app.py
 
 bundle-validate:  ## databricks bundle validate (needs the Databricks CLI and auth)
 	cd databricks && databricks bundle validate -t $(TARGET)
@@ -70,7 +69,7 @@ bundle-deploy:  ## databricks bundle deploy
 bundle-run:  ## Run the end-to-end Databricks job
 	cd databricks && databricks bundle run -t $(TARGET) gridiron_refresh
 
-sync:  ## Fallback: copy Databricks serving tables into Snowflake (reads .env)
+sync:  ## Copy the Databricks serving tables into Snowflake SYNCED (reads .env)
 	set -a && . ./.env && set +a && $(BIN)/python scripts/sync_to_snowflake.py
 
 clean:  ## Remove caches and build output (keeps data/ and .venv/)

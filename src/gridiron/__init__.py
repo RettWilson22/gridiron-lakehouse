@@ -1,3 +1,3 @@
-"""Gridiron lakehouse: NFL fourth-down analytics on Databricks and Snowflake."""
+"""Gridiron lakehouse: fantasy football projections on Databricks and Snowflake."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

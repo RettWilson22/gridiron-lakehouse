@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from pyspark.sql import SparkSession
@@ -20,6 +21,9 @@ def local_session(
         .config("spark.ui.enabled", "false")
         .config("spark.ui.showConsoleProgress", "false")
         .config("spark.driver.memory", "4g")
+        # Python workers must run the driver's interpreter, not whatever is first on PATH.
+        .config("spark.pyspark.python", sys.executable)
+        .config("spark.pyspark.driver.python", sys.executable)
         # Databricks enables Arrow for pandas <-> Spark conversion by default; match it.
         .config("spark.sql.execution.arrow.pyspark.enabled", "true")
     )

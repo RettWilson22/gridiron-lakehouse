@@ -1,71 +1,71 @@
 version: 2
 
 models:
-  - name: stg_fourth_down_scored
-    description: One row per fourth-down decision with the model's valuation of each option.
+  - name: stg_player_week
+    description: Actual fantasy points and usage per player-game.
     columns:
-      - name: play_key
+      - name: player_week_key
+        data_tests: [unique, not_null]
+      - name: position
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["QB", "RB", "WR", "TE"]
+      - name: fantasy_points_ppr
+        data_tests: [not_null]
+
+  - name: stg_team_week
+    columns:
+      - name: team_week_key
         data_tests: [unique, not_null]
       - name: game_id
-        data_tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('stg_game_summary')
-                field: game_id
-      - name: team
-        data_tests: [not_null]
-      - name: decision
-        data_tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ["go", "punt", "field_goal"]
-      - name: recommendation
-        data_tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ["go", "punt", "field_goal"]
-      - name: outcome
-        data_tests:
-          - accepted_values:
-              arguments:
-                values: ["converted", "failed", "fg_made", "fg_missed", "fg_blocked", "punt", "punt_blocked"]
-      - name: p_convert
-        data_tests: [not_null]
-      - name: expected_points_lost
         data_tests: [not_null]
 
-  - name: stg_team_season_summary
-    description: Regular-season team efficiency and fourth-down tendencies.
+  - name: stg_defense_vs_position
     columns:
-      - name: team_season_key
+      - name: defense_week_key
         data_tests: [unique, not_null]
-      - name: season
-        data_tests: [not_null]
-      - name: team
-        data_tests: [not_null]
-
-  - name: stg_game_summary
-    columns:
-      - name: game_id
-        data_tests: [unique, not_null]
-      - name: season_type
+      - name: position
         data_tests:
           - accepted_values:
               arguments:
-                values: ["REG", "POST"]
+                values: ["QB", "RB", "WR", "TE"]
 
-  - name: stg_coach_aggressiveness
+  - name: stg_projections
+    description: One row per projected player-week (backtest and live).
     columns:
-      - name: team_season_key
+      - name: projection_key
+        data_tests: [unique, not_null]
+      - name: kind
         data_tests:
-          - unique
           - not_null
-          - relationships:
+          - accepted_values:
               arguments:
-                to: ref('stg_team_season_summary')
-                field: team_season_key
-      - name: aggressiveness_rank
+                values: ["backtest", "live"]
+      - name: position
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["QB", "RB", "WR", "TE"]
+      - name: proj_ppr
         data_tests: [not_null]
+      - name: start_sit_ppr
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Start", "Flex", "Sit"]
+
+  - name: stg_risers
+    columns:
+      - name: riser_key
+        data_tests: [unique, not_null]
+
+  - name: stg_backtest_metrics
+    columns:
+      - name: metric_key
+        data_tests: [unique, not_null]
+      - name: method
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["model", "last3", "season_avg", "ecr"]

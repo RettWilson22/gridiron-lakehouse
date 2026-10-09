@@ -3,19 +3,25 @@ version: 2
 sources:
   - name: gold
     description: >
-      Gold tables produced on Databricks. On Snowflake they are read either through the
-      Iceberg views (gold_source=iceberg) or from the synced native tables
-      (gold_source=synced); both expose identical upper-case columns. DuckDB targets read
-      the same tables from parquet files via `external_location`.
-    schema: "{{ 'SYNCED' if var('gold_source') == 'synced' else 'ICEBERG' }}"
+      Serving tables produced on Databricks. On Snowflake they are read either from the
+      synced native tables (gold_source=synced, the default) or through the Iceberg views
+      (gold_source=iceberg); both expose identical upper-case columns. DuckDB targets read
+      the same tables from Parquet files via `external_location`.
+    schema: "{{ 'ICEBERG' if var('gold_source') == 'iceberg' else 'SYNCED' }}"
     meta:
       external_location: "read_parquet('{{ var('gold_dir') }}/{name}.parquet')"
     tables:
-      - name: fourth_down_scored
-        description: Every fourth-down go / punt / field goal decision, scored by the model.
-      - name: team_season_summary
-        description: Regular-season offensive efficiency and fourth-down tendencies.
-      - name: game_summary
-        description: One row per game.
-      - name: coach_aggressiveness
-        description: Team-season go rate when the model recommended going for it.
+      - name: player_week
+        description: One row per QB/RB/WR/TE per regular-season game played.
+      - name: team_week
+        description: One row per team and regular-season game, played or upcoming.
+      - name: defense_vs_position
+        description: Fantasy points each defense allowed per game and position.
+      - name: projections
+        description: >
+          Every published projection: walk-forward backtest weeks and live weeks, with
+          ranks, tiers and start/sit labels in PPR, half PPR and standard scoring.
+      - name: risers
+        description: Usage over each player's last three games against earlier games.
+      - name: backtest_metrics
+        description: Walk-forward accuracy per season and position for the model and baselines.

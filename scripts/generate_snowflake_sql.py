@@ -1,7 +1,8 @@
 """Generate Snowflake DDL for the serving tables from the gold table schemas.
 
-The gold fixture parquet files are produced by the real transformations, so their Arrow
-schemas are the contract. Regenerate after changing a gold table:
+The gold fixture Parquet files are produced by the real pipeline and model code, so their
+Arrow schemas are the contract (a test checks the code still produces them). Regenerate
+after changing a serving table:
 
     python scripts/generate_snowflake_sql.py          # write files
     python scripts/generate_snowflake_sql.py --check  # fail if files are stale (CI)
@@ -16,7 +17,7 @@ from pathlib import Path
 import pyarrow.parquet as pq
 
 from gridiron.serving import SERVING_TABLES
-from gridiron.snowflake_sql import create_table_sql, iceberg_view_sql
+from gridiron.snowflake_sql import create_table_sql, iceberg_table_sql, iceberg_view_sql
 
 ROOT = Path(__file__).resolve().parent.parent
 GOLD = ROOT / "tests" / "fixtures" / "gold"
@@ -30,14 +31,25 @@ def render() -> dict[Path, str]:
         iceberg_view_sql("ICEBERG", "ICEBERG_RAW", t, s) for t, s in schemas.items()
     )
     tables = "\n\n".join(create_table_sql("SYNCED", t, s) for t, s in schemas.items())
+    iceberg = "\n\n".join(
+        iceberg_table_sql("ICEBERG_RAW", t, "GRIDIRON_UNITY_CATALOG") for t in schemas
+    )
     context = "USE ROLE GRIDIRON_ADMIN;\nUSE DATABASE GRIDIRON;\nUSE WAREHOUSE GRIDIRON_WH;\n"
     return {
+        ROOT / "snowflake" / "iceberg" / "02_iceberg_tables.sql": (
+            f"{HEADER}-- Iceberg path only (needs external storage; see the README):\n"
+            f"-- externally managed Iceberg tables over the Unity Catalog serving tables.\n"
+            f"-- Databricks stays the only writer; AUTO_REFRESH polls the catalog for\n"
+            f"-- new snapshots. Run as GRIDIRON_ADMIN after 01_catalog_integration.sql.\n\n"
+            f"{context}\n{iceberg}\n"
+        ),
         ROOT / "snowflake" / "iceberg" / "03_iceberg_views.sql": (
-            f"{HEADER}-- Upper-case views over the Iceberg tables so downstream SQL does not\n"
-            f"-- depend on Unity Catalog's lower-case identifiers.\n\n{context}\n{views}\n"
+            f"{HEADER}-- Iceberg path only: upper-case views over the Iceberg tables, so dbt\n"
+            f"-- reads the same column names as on the synced path.\n\n{context}\n{views}\n"
         ),
         ROOT / "snowflake" / "sync" / "01_synced_tables.sql": (
-            f"{HEADER}-- Native tables loaded by scripts/sync_to_snowflake.py (fallback path).\n"
+            f"{HEADER}-- Native tables loaded by scripts/sync_to_snowflake.py (the production\n"
+            f"-- path with Databricks Free Edition; see the README).\n"
             f"-- Primary keys are informational in Snowflake; the sync MERGE enforces them.\n\n"
             f"{context}\n{tables}\n"
         ),

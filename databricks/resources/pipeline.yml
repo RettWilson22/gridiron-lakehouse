@@ -14,4 +14,5 @@ resources:
         dependencies:
           - ../../dist/*.whl
       configuration:
-        gridiron.landing_path: /Volumes/${var.catalog}/${resources.schemas.gridiron.name}/${resources.volumes.landing.name}/pbp
+        gridiron.landing_root: /Volumes/${var.catalog}/${resources.schemas.gridiron.name}/${resources.volumes.landing.name}
+        gridiron.first_season: ${var.first_season}

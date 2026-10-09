@@ -1,7 +1,7 @@
-"""Job task: land nflverse play-by-play season files in the bronze volume.
+"""Job task: land the public fantasy football datasets in the bronze volume.
 
-Runs unchanged on Databricks serverless (``--landing-dir /Volumes/...``) and locally
-(``--landing-dir data/landing``).
+Runs unchanged on Databricks serverless (``--landing-root /Volumes/...``) and locally
+(``--landing-root data/landing``).
 """
 
 from __future__ import annotations
@@ -12,12 +12,13 @@ import sys
 from pathlib import Path
 
 from gridiron.config import FIRST_SEASON, current_season
+from gridiron.datasets import DATASETS
 from gridiron.ingest import ingest
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--landing-dir", required=True, type=Path)
+    parser.add_argument("--landing-root", required=True, type=Path)
     parser.add_argument("--first-season", type=int, default=FIRST_SEASON)
     parser.add_argument(
         "--last-season",
@@ -25,6 +26,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="defaults to the current season, which is always refreshed",
     )
+    parser.add_argument("--datasets", nargs="+", choices=sorted(DATASETS), default=list(DATASETS))
     return parser.parse_args(argv)
 
 
@@ -33,9 +35,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     current = current_season()
     last = args.last_season or current
-    results = ingest(range(args.first_season, last + 1), args.landing_dir, current)
+    results = ingest(args.datasets, range(args.first_season, last + 1), args.landing_root, current)
     for result in results:
-        print(f"{result.season}: {result.action}" + (f" -> {result.path}" if result.path else ""))
+        print(result.describe())
     return 0
 
 
