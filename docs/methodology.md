@@ -127,11 +127,13 @@ more.
 
 The Databricks job runs Tuesday (results through Monday night), Thursday (final injury
 reports for Thursday games) and Saturday (final reports for Sunday and Monday games) at
-12:00 UTC. The upcoming week is the first regular-season week with an unplayed game. Each
-run replaces projections only for games that have not kicked off, so the stored record is
-exactly what was published before each game, and a game that kicked off before its first
-run is never projected. `tests/test_projections.py` covers both rules;
-[verification.md](verification.md) shows them on real data.
+12:00 UTC. The upcoming week is the first regular-season week of the current season (the
+latest in the schedule) with an unplayed game; an unfinished game left over from an earlier
+season, such as a cancelled one, is ignored. Each run replaces projections only for games
+that have not kicked off, so the stored record is exactly what was published before each
+game, and a game that kicked off before its first run is never projected.
+`tests/test_projections.py` covers these rules; [verification.md](verification.md) shows
+the kickoff rules on real data.
 
 ## Backtest
 
