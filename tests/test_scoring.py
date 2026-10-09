@@ -78,3 +78,4 @@ def test_udf_handler_null_in_null_out_and_tolerates_missing_values() -> None:
     assert scoring.udf_handler(None, None) is None
     assert scoring.udf_handler({"rushing_yards": None, "rushing_tds": 1}, None) == 6.0
     assert scoring.udf_handler({"receptions": "3"}, {"preset": "half"}) == 1.5
+    assert scoring.fantasy_points({"receptions": float("nan"), "rushing_tds": 1}) == 6.0
