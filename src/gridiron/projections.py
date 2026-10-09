@@ -171,59 +171,73 @@ def add_rankings(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def risers(player_week: pd.DataFrame, weeks: list[tuple[int, int]]) -> pd.DataFrame:
-    """Usage over each player's last three games vs. before, as of the start of each week."""
-    records = []
-    games = player_week.sort_values(["player_id", "season", "week"])
-    previous_season = games.groupby(["player_id", "season"])[list(USAGE)].mean().reset_index()
-    previous_season["season"] += 1
-    previous_season = previous_season.set_index(["player_id", "season"])
-    for season, week in weeks:
-        before = games[(games["season"] == season) & (games["week"] < week)]
-        for player_id, history in before.groupby("player_id"):
-            if len(history) < RISER_RECENT_GAMES:
-                continue
-            recent = history.tail(RISER_RECENT_GAMES)
-            earlier = history.iloc[:-RISER_RECENT_GAMES]
-            baseline: pd.Series
-            if len(earlier) >= RISER_MIN_EARLIER_GAMES:
-                baseline = earlier[list(USAGE)].mean()
-                basis = "earlier games this season"
-            elif (str(player_id), season) in previous_season.index:
-                baseline = pd.Series(previous_season.loc[(str(player_id), season)])
-                basis = "last season"
-            else:
-                continue
-            last = recent.iloc[-1]
-            record = {
-                "season": season,
-                "week": week,
-                "player_id": player_id,
-                "player_name": last["player_name"],
-                "position": last["position"],
-                "team": last["team"],
-                "games_recent": len(recent),
-                "games_earlier": len(earlier),
-                "baseline_basis": basis,
-            }
-            for metric in USAGE:
-                record[f"{metric}_recent"] = float(recent[metric].mean())
-                record[f"{metric}_before"] = float(baseline[metric])
-                record[f"{metric}_change"] = record[f"{metric}_recent"] - record[f"{metric}_before"]
-            record["is_riser"] = bool(
-                record["expected_ppr_change"] >= RISER_MIN_XFP_GAIN
-                and record["expected_ppr_recent"] >= RISER_MIN_RECENT_XFP
-            )
-            records.append(record)
-    if not records:
+    """Usage over each player's last three games vs. before, as of the start of each week.
+
+    Running sums per player and season give the mean over any run of consecutive games, so
+    each (week, player) pair only needs the player's latest game before that week. Missing
+    usage values are skipped, as ``mean()`` skips them. Ties in the expected-points change
+    (to 1e-9) are ranked by player id.
+    """
+    usage = list(USAGE)
+    games = player_week.sort_values(["player_id", "season", "week"]).reset_index(drop=True)
+    games["season"] = games["season"].astype("int64")
+    keys = [games["player_id"], games["season"]]
+    games["_games"] = games.groupby(keys).cumcount() + 1
+    sums = games[usage].fillna(0.0).groupby(keys).cumsum()
+    counts = games[usage].notna().astype("int64").groupby(keys).cumsum()
+    sums_before = sums.groupby(keys).shift(RISER_RECENT_GAMES, fill_value=0.0)
+    counts_before = counts.groupby(keys).shift(RISER_RECENT_GAMES, fill_value=0)
+    recent_means = (sums - sums_before) / (counts - counts_before).replace(0, np.nan)
+    earlier_means = sums_before / counts_before.replace(0, np.nan)
+
+    targets = pd.DataFrame(weeks, columns=["season", "target_week"]).drop_duplicates()
+    targets["season"] = targets["season"].astype("int64")
+    pairs = games[["season", "week", "player_id"]].reset_index().merge(targets, on="season")
+    pairs = pairs[pairs["week"] < pairs["target_week"]]
+    # Games are in week order within a player, so the last pair is his latest game.
+    latest = pairs.drop_duplicates(["season", "target_week", "player_id"], keep="last")
+    rows = latest["index"].to_numpy()
+    played = games["_games"].to_numpy()[rows]
+    enough = played >= RISER_RECENT_GAMES
+    rows, played, target_weeks = rows[enough], played[enough], latest["target_week"][enough]
+    if len(rows) == 0:
         return empty_risers()
-    out = pd.DataFrame.from_records(records)
-    out["riser_rank"] = (
-        out.groupby(["season", "week"])["expected_ppr_change"]
-        .rank(ascending=False, method="first", na_option="bottom")
-        .astype("int64")
+
+    previous = games.groupby(["player_id", "season"])[usage].mean().reset_index()
+    previous["season"] += 1
+    found = games.iloc[rows][["player_id", "season"]].reset_index(drop=True)
+    previous = found.merge(previous, on=["player_id", "season"], how="left", indicator=True)
+    use_earlier = played - RISER_RECENT_GAMES >= RISER_MIN_EARLIER_GAMES
+    has_baseline = use_earlier | (previous["_merge"] == "both").to_numpy()
+
+    out = games.iloc[rows][["season", "player_id", "player_name", "position", "team"]]
+    out = out.reset_index(drop=True).assign(
+        week=target_weeks.to_numpy(),
+        games_recent=RISER_RECENT_GAMES,
+        games_earlier=played - RISER_RECENT_GAMES,
+        baseline_basis=np.where(use_earlier, "earlier games this season", "last season"),
     )
-    out = out.sort_values(["season", "week", "riser_rank"]).reset_index(drop=True)
-    return out[list(RISER_COLUMNS)].astype(RISER_COLUMNS)
+    for metric in USAGE:
+        recent = recent_means[metric].to_numpy()[rows]
+        before = np.where(use_earlier, earlier_means[metric].to_numpy()[rows], previous[metric])
+        out[f"{metric}_recent"] = recent
+        out[f"{metric}_before"] = before
+        out[f"{metric}_change"] = recent - before
+    out["is_riser"] = (out["expected_ppr_change"] >= RISER_MIN_XFP_GAIN) & (
+        out["expected_ppr_recent"] >= RISER_MIN_RECENT_XFP
+    )
+    out = out[has_baseline]
+    if out.empty:
+        return empty_risers()
+    out = out.assign(_order=out["expected_ppr_change"].round(9)).sort_values(
+        ["season", "week", "_order", "player_id"],
+        ascending=[True, True, False, True],
+        na_position="last",
+        kind="stable",
+    )
+    out["riser_rank"] = out.groupby(["season", "week"]).cumcount() + 1
+    typed: pd.DataFrame = out[list(RISER_COLUMNS)].astype(RISER_COLUMNS)
+    return typed.reset_index(drop=True)
 
 
 def empty_risers() -> pd.DataFrame:
