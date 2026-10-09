@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import random
 
 import pytest
 
@@ -70,3 +71,34 @@ def test_degenerate_inputs() -> None:
 )
 def test_start_sit_for_a_twelve_team_league(position: str, rank: int, label: str) -> None:
     assert start_sit(position, rank) == label
+
+
+def tiers_by_rerunning_each_k(
+    projections: list[float], min_explained: float, max_tiers: int
+) -> list[int]:
+    """The plain definition: try k = 1, 2, ... until the split explains enough."""
+    order = sorted(range(len(projections)), key=lambda i: -projections[i])
+    values = [projections[i] for i in order]
+    mean = sum(values) / len(values)
+    total = sum((v - mean) ** 2 for v in values)
+    starts = [0]
+    if total > 0:
+        for k in range(1, min(max_tiers, len(values)) + 1):
+            starts, sse = optimal_breaks(values, k)
+            if 1 - sse / total >= min_explained:
+                break
+    tiers, tier = [0] * len(values), 0
+    for rank, index in enumerate(order):
+        tier += rank in starts
+        tiers[index] = tier
+    return tiers
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_tiers_match_the_plain_definition(seed: int) -> None:
+    rng = random.Random(seed)
+    projections = [round(rng.uniform(0, 30), 1) for _ in range(rng.randint(1, 72))]
+    for min_explained, max_tiers in ((0.9, 10), (0.99, 4), (0.5, 10)):
+        assert assign_tiers(projections, min_explained, max_tiers) == tiers_by_rerunning_each_k(
+            projections, min_explained, max_tiers
+        )
