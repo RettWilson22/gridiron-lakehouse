@@ -6,10 +6,11 @@ Reads the Parquet output of ``run_local_pipeline.py`` and does what the Databric
     python scripts/run_local_model.py --lakehouse-dir data/lakehouse
 
 Writes ``backtest_projections``, ``projections``, ``live_projections``, ``risers`` and
-``backtest_metrics`` Parquet files next to the inputs, and the metrics to
-``artifacts/backtest_metrics.json``. Re-running keeps live projections for games that have
-already kicked off, and reuses the stored backtest projections of every season whose data
-did not change instead of refitting it.
+``backtest_metrics`` Parquet files next to the inputs, the metrics to
+``artifacts/backtest_metrics.json`` and bootstrap intervals for the model's margins over
+the baselines and the experts to ``artifacts/backtest_intervals.json``. Re-running keeps
+live projections for games that have already kicked off, and reuses the stored backtest
+projections of every season whose data did not change instead of refitting it.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import pandas as pd
 from gridiron import backtest as bt
 from gridiron.workflow import (
     DEFAULT_TEST_SEASONS,
+    backtest_intervals,
     prepare,
     publish,
     reused_versions,
@@ -39,6 +41,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lakehouse-dir", type=Path, default=Path("data/lakehouse"))
     parser.add_argument("--test-seasons", type=int, nargs="+", default=list(DEFAULT_TEST_SEASONS))
     parser.add_argument("--metrics-out", type=Path, default=Path("artifacts/backtest_metrics.json"))
+    parser.add_argument(
+        "--intervals-out", type=Path, default=Path("artifacts/backtest_intervals.json")
+    )
     parser.add_argument(
         "--now",
         type=pd.Timestamp,
@@ -98,9 +103,25 @@ def main(argv: list[str] | None = None) -> int:
         "metrics": json.loads(metrics.round(4).to_json(orient="records")),
     }
     args.metrics_out.write_text(json.dumps(report, indent=2) + "\n")
+    intervals = backtest_intervals(prepared, backtest_projections, args.test_seasons)
+    args.intervals_out.parent.mkdir(parents=True, exist_ok=True)
+    intervals_report = {
+        "generated_at": now.isoformat(),
+        "test_seasons": args.test_seasons,
+        "method": "paired bootstrap over weeks, 95% percentile intervals",
+        "resamples": bt.RESAMPLES,
+        "seed": bt.SEED,
+        "intervals": json.loads(intervals.round(4).to_json(orient="records")),
+    }
+    args.intervals_out.write_text(json.dumps(intervals_report, indent=2) + "\n")
     print(f"candidate pool coverage: {coverage}")
     pooled = metrics[metrics["scope"] == bt.pooled_scope(metrics["scope"])]
     print(pooled.round(3).to_string(index=False))
+    print(
+        intervals[intervals["scope"] == bt.pooled_scope(metrics["scope"])]
+        .round(3)
+        .to_string(index=False)
+    )
     print(f"finished in {time.monotonic() - started:.0f}s")
     return 0
 
