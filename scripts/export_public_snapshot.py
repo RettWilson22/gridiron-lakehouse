@@ -9,7 +9,8 @@ export. Steps:
    ``data/lakehouse``) or straight from Databricks (``--from-databricks``, using the
    same ``.env`` settings and CLI-profile auth as ``make sync``);
 2. build the dbt project over them in a throwaway DuckDB database;
-3. write each mart the app reads to ``streamlit_public/snapshot/<mart>.parquet``.
+3. write each mart the app reads to ``streamlit_public/snapshot/<mart>.parquet``, with
+   per-player FantasyPros ranks left out (see ``REDACTED``).
 
     python scripts/export_public_snapshot.py
     set -a && . ./.env && set +a && python scripts/export_public_snapshot.py --from-databricks
@@ -78,6 +79,11 @@ def build_marts(serving_dir: Path, database: Path) -> None:
     subprocess.run(command, cwd=DBT_DIR, env=env, check=True)
 
 
+# Columns blanked in the public copy: FantasyPros rankings are third-party content, so the
+# public snapshot keeps only the accuracy comparison against them, not the ranks themselves.
+REDACTED: dict[str, tuple[str, ...]] = {"mart_cheat_sheet": ("ecr_rank",)}
+
+
 def export_marts(database: Path, out_dir: Path) -> dict[str, int]:
     """Copy each mart the app reads from a DuckDB build into Parquet files."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -85,7 +91,9 @@ def export_marts(database: Path, out_dir: Path) -> dict[str, int]:
     with duckdb.connect(str(database), read_only=True) as con:
         for mart in MARTS:
             target = (out_dir / f"{mart}.parquet").as_posix()
-            con.execute(f"COPY (SELECT * FROM marts.{mart}) TO '{target}' (FORMAT PARQUET)")
+            blanked = ", ".join(f"NULL AS {column}" for column in REDACTED.get(mart, ()))
+            select = f"* REPLACE ({blanked})" if blanked else "*"
+            con.execute(f"COPY (SELECT {select} FROM marts.{mart}) TO '{target}' (FORMAT PARQUET)")
             result = con.execute(f"SELECT count(*) FROM marts.{mart}").fetchone()
             rows[mart] = int(result[0]) if result else 0
     return rows

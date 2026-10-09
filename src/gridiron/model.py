@@ -17,8 +17,8 @@ test data was scored:
   custom league scoring needs;
 * the shallow, heavily regularized settings below beat deeper trees at every position;
 * quantile gradient boosting was tried for the floor and ceiling and stalled near zero on
-  this zero-inflated target (players who sit score zero); the empirical bands covered
-  79-82% of 2022 outcomes in the evaluation pool against an 80% target.
+  this zero-inflated target (players who sit score zero); the empirical bands cover
+  76-84% of 2022 outcomes in the evaluation pool, by position, against an 80% target.
 """
 
 from __future__ import annotations
