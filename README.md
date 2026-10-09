@@ -1,5 +1,8 @@
 # Gridiron Lakehouse
 
+**Live demo: https://gridiron-lakehouse.streamlit.app** (a public, read-only copy of the
+Snowflake app, refreshed from the weekly run; the Snowflake version itself needs a login)
+
 A season-long fantasy football projection system and weekly cheat sheet, built across
 Databricks and Snowflake the way many data teams split the work. Databricks lands eleven
 public datasets (nflverse play-by-play, box scores, snap counts, rosters, injury reports,
