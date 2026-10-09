@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -92,15 +93,55 @@ def test_positions_formats_and_past_weeks(app: AppTest) -> None:
     assert "Actual" in sheet(app).columns
 
 
+def apply_scoring(app: AppTest, **settings: float) -> None:
+    """Change league settings in the sidebar form and press Apply (one rerun)."""
+    for key, value in settings.items():
+        app.sidebar.number_input(key=key).set_value(value)
+    next(b for b in app.sidebar.button if b.label == "Apply").click().run()
+    assert not app.exception
+
+
 def test_custom_scoring_reranks_with_the_scoring_handler(app: AppTest) -> None:
     app.radio(key="position").set_value("WR").run()
     ppr = sheet(app).set_index("Player")["Proj"]
     app.sidebar.radio(key="scoring_format").set_value("Custom").run()
-    app.sidebar.number_input(key="rec").set_value(0.0).run()
     assert not app.exception
+    apply_scoring(app, rec=0.0)
     custom = sheet(app).set_index("Player")["Proj"]
     assert (custom.reindex(ppr.index) < ppr + 1e-9).all()
+    assert (custom.reindex(ppr.index) < ppr - 1e-9).any()
     assert custom.is_monotonic_decreasing
+
+
+def test_league_settings_apply_only_on_apply(app: AppTest) -> None:
+    app.radio(key="position").set_value("WR").run()
+    app.sidebar.radio(key="scoring_format").set_value("Custom").run()
+    before = sheet(app)
+    app.sidebar.number_input(key="rec").set_value(0.0).run()  # edited, not applied
+    pd.testing.assert_frame_equal(sheet(app), before)
+    apply_scoring(app, rec=0.0)
+    assert sheet(app)["Proj"].sum() < before["Proj"].sum()
+
+
+def test_a_scoring_change_costs_two_queries(app: AppTest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Projected and actual custom points for the whole week, not per position."""
+    import data_access  # noqa: PLC0415 - the module the app imported from APP.parent
+
+    queries: list[str] = []
+    original = data_access.DuckDBSource.query
+
+    def counted(self: Any, sql: str, params: list[Any] | None = None) -> pd.DataFrame:
+        queries.append(sql)
+        frame: pd.DataFrame = original(self, sql, params)
+        return frame
+
+    monkeypatch.setattr(data_access.DuckDBSource, "query", counted)
+    app.sidebar.radio(key="scoring_format").set_value("Custom").run()
+    queries.clear()
+    apply_scoring(app, rec=0.5, td=4.0)
+    assert len(queries) == 2, queries
+    open_section(app, "Start / Sit")  # other sections reuse the same week's sheet
+    assert len(queries) == 3  # only the recent-games query
 
 
 def open_section(app: AppTest, name: str) -> None:
@@ -180,3 +221,19 @@ def test_public_mode_reads_an_exported_snapshot(
     assert not test.exception
     assert "static snapshot" in " ".join(c.value for c in test.sidebar.caption)
     assert not sheet(test).empty
+
+
+def test_no_week_is_labelled_upcoming_after_the_season(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    load_exporter().export_marts(CI_DB, tmp_path)
+    cheat_sheet = tmp_path / "mart_cheat_sheet.parquet"
+    pd.read_parquet(cheat_sheet).assign(is_upcoming=False).to_parquet(cheat_sheet)
+    monkeypatch.setenv("GRIDIRON_SNAPSHOT_DIR", str(tmp_path))
+    monkeypatch.delenv("GRIDIRON_APP_MODE", raising=False)
+    test = AppTest.from_file(str(PUBLIC_APP), default_timeout=120)
+    test.run()
+    assert not test.exception
+    week = test.sidebar.selectbox[0]
+    assert week.options  # labels read "Week N"
+    assert not any("(upcoming)" in label for label in week.options)

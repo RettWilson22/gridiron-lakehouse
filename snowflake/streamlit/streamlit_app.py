@@ -12,6 +12,7 @@ the same marts, or as a public copy that reads a static Parquet snapshot:
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 import altair as alt
@@ -141,23 +142,76 @@ def run(sql: str, params: tuple[Any, ...] = ()) -> pd.DataFrame:
 
 @st.cache_data(ttl=600)
 def custom_points(
-    table: str,
-    *,
-    stats: tuple[str, ...],
-    prefix: str,
-    week_key: tuple[int, int, str],
-    scoring: str,
+    table: str, *, stats: tuple[str, ...], prefix: str, season: int, week: int, scoring: str
 ) -> pd.DataFrame:
-    """Points under custom settings for one season, week and position (JSON settings)."""
+    """Points under custom settings (JSON) for every player in one season and week."""
     frame: pd.DataFrame = source().custom_points(
         table,
         stats=stats,
         prefix=prefix,
-        where="season = ? and week = ? and position = ?",
-        params=list(week_key),
+        where="season = ? and week = ?",
+        params=[season, week],
         scoring=json.loads(scoring),
     )
     return frame
+
+
+@st.cache_data(ttl=600)
+def week_sheets(season: int, week: int, fmt: str, settings_json: str) -> pd.DataFrame:
+    """Every position's sheet for one week in one scoring format, best first within each
+    position. ``settings_json`` holds the custom league settings when ``fmt`` is "custom";
+    a change of settings costs two queries (projected and actual points for the week)."""
+    rows = run("select * from marts.mart_cheat_sheet where season = ? and week = ?", (season, week))
+    if rows.empty:
+        return rows
+    if fmt != "custom":
+        out = rows.assign(
+            proj=rows[f"proj_{fmt}"],
+            floor=rows[f"floor_{fmt}"],
+            ceiling=rows[f"ceiling_{fmt}"],
+            rank=rows[f"pos_rank_{fmt}"],
+            tier=rows[f"tier_{fmt}"],
+            advice=rows[f"start_sit_{fmt}"],
+            actual=rows[f"actual_{fmt}"],
+        )
+        return out.sort_values(["position", "rank"]).reset_index(drop=True)
+
+    projected = custom_points(
+        "marts.mart_cheat_sheet",
+        stats=PROJECTED_STATS,
+        prefix="proj_",
+        season=season,
+        week=week,
+        scoring=settings_json,
+    )
+    out = rows.merge(projected, on="player_id")
+    ratio = (out["custom_points"] / out["proj_ppr"].where(out["proj_ppr"] > 0)).fillna(1.0)
+    out = out.assign(
+        proj=out["custom_points"],
+        floor=(out["floor_ppr"] * ratio).clip(upper=out["custom_points"]),
+        ceiling=(out["ceiling_ppr"] * ratio).clip(lower=out["custom_points"]),
+    )
+    out = out.sort_values(["position", "proj"], ascending=[True, False]).reset_index(drop=True)
+    out["rank"] = out.groupby("position").cumcount() + 1
+    out["tier"] = pd.Series(pd.NA, index=out.index, dtype="Int64")
+    for position, group in out.groupby("position"):
+        pool = group[group["rank"] <= POOL.get(str(position), 0)]
+        out.loc[pool.index, "tier"] = tiers.assign_tiers(pool["proj"].tolist())
+    out["advice"] = [
+        tiers.start_sit(str(p), int(r)) for p, r in zip(out["position"], out["rank"], strict=True)
+    ]
+    actual = custom_points(
+        "marts.mart_player_game_log",
+        stats=ACTUAL_STATS,
+        prefix="",
+        season=season,
+        week=week,
+        scoring=settings_json,
+    ).rename(columns={"custom_points": "actual_custom"})
+    out = out.merge(actual, on="player_id", how="left")
+    out["actual"] = out["actual_custom"].where(out["actual_ppr"].notna())
+    out.loc[out["actual_ppr"].notna() & out["actual"].isna(), "actual"] = 0.0
+    return out
 
 
 def fmt_range(low: float, high: float) -> str:
@@ -175,7 +229,8 @@ if weeks.empty:
     st.stop()
 season = int(weeks["season"].max())
 upcoming = weeks.loc[weeks["upcoming"] == 1, "week"]
-default_week = int(upcoming.iloc[0]) if not upcoming.empty else int(weeks["week"].max())
+upcoming_week = int(upcoming.iloc[0]) if not upcoming.empty else None
+default_week = upcoming_week if upcoming_week is not None else int(weeks["week"].max())
 week_options = [int(w) for w in weeks["week"]]
 
 st.sidebar.header("Settings")
@@ -183,14 +238,16 @@ week = st.sidebar.selectbox(
     "Week",
     week_options,
     index=week_options.index(default_week),
-    format_func=lambda w: f"Week {w}" + (" (upcoming)" if w == default_week else ""),
+    format_func=lambda w: f"Week {w}" + (" (upcoming)" if w == upcoming_week else ""),
 )
 format_label = st.sidebar.radio("Scoring", list(FORMATS), key="scoring_format")
 fmt = FORMATS[str(format_label)]
 
 scoring: dict[str, Any] = {}
 if fmt == "custom":
-    with st.sidebar.expander("League scoring", expanded=True):
+    # A form, so changing several settings reruns the sheet once, on Apply.
+    with st.sidebar.form("league_scoring"):
+        st.markdown("**League scoring**")
         reception = st.number_input("Points per reception", 0.0, 2.0, 1.0, 0.25, key="rec")
         pass_td = st.number_input("Passing touchdown", 2.0, 8.0, 4.0, 1.0, key="pass_td")
         pass_yards = st.number_input("Passing yards per point", 10, 50, 25, 5, key="pass_yd")
@@ -199,8 +256,11 @@ if fmt == "custom":
         touchdown = st.number_input("Rushing / receiving touchdown", 4.0, 8.0, 6.0, 1.0, key="td")
         fumble = st.number_input("Fumble lost", -4.0, 0.0, -2.0, 1.0, key="fumble")
         premium = st.number_input("Tight end bonus per reception", 0.0, 1.5, 0.0, 0.25, key="te")
-        bonus_100 = st.number_input("100-yard rushing or receiving bonus", 0.0, 6.0, 0.0, 1.0)
-        bonus_300 = st.number_input("300-yard passing bonus", 0.0, 6.0, 0.0, 1.0)
+        bonus_100 = st.number_input(
+            "100-yard rushing or receiving bonus", 0.0, 6.0, 0.0, 1.0, key="bonus_100"
+        )
+        bonus_300 = st.number_input("300-yard passing bonus", 0.0, 6.0, 0.0, 1.0, key="bonus_300")
+        st.form_submit_button("Apply", type="primary")
     scoring = {
         "preset": "ppr",
         "rec": reception,
@@ -223,65 +283,12 @@ if fmt == "custom":
         + " Floors and ceilings are scaled from PPR. Yardage bonuses applied to an average "
         "stat line understate their real value."
     )
+settings_json = json.dumps(scoring, sort_keys=True) if fmt == "custom" else ""
 st.sidebar.caption(f"Data: {source().description}")
 st.sidebar.markdown(
     f"Built on Databricks and Snowflake. [How it works]({REPO_URL}#readme) · "
     f"[Source code]({REPO_URL})"
 )
-
-
-def week_sheet(position: str) -> pd.DataFrame:
-    """The selected week's sheet for a position in the selected scoring format."""
-    rows = run(
-        "select * from marts.mart_cheat_sheet where season = ? and week = ? and position = ?",
-        (season, week, position),
-    )
-    if rows.empty:
-        return rows
-    if fmt != "custom":
-        out = rows.assign(
-            proj=rows[f"proj_{fmt}"],
-            floor=rows[f"floor_{fmt}"],
-            ceiling=rows[f"ceiling_{fmt}"],
-            rank=rows[f"pos_rank_{fmt}"],
-            tier=rows[f"tier_{fmt}"],
-            advice=rows[f"start_sit_{fmt}"],
-            actual=rows[f"actual_{fmt}"],
-        )
-        return out.sort_values("rank").reset_index(drop=True)
-
-    settings = json.dumps(scoring, sort_keys=True)
-    projected = custom_points(
-        "marts.mart_cheat_sheet",
-        stats=PROJECTED_STATS,
-        prefix="proj_",
-        week_key=(season, week, position),
-        scoring=settings,
-    )
-    out = rows.merge(projected, on="player_id")
-    ratio = (out["custom_points"] / out["proj_ppr"].where(out["proj_ppr"] > 0)).fillna(1.0)
-    out = out.assign(
-        proj=out["custom_points"],
-        floor=(out["floor_ppr"] * ratio).clip(upper=out["custom_points"]),
-        ceiling=(out["ceiling_ppr"] * ratio).clip(lower=out["custom_points"]),
-    )
-    out = out.sort_values("proj", ascending=False).reset_index(drop=True)
-    out["rank"] = range(1, len(out) + 1)
-    pool = out["rank"] <= POOL[position]
-    out["tier"] = pd.Series(dtype="Int64")
-    out.loc[pool, "tier"] = tiers.assign_tiers(out.loc[pool, "proj"].tolist())
-    out["advice"] = [tiers.start_sit(position, int(r)) for r in out["rank"]]
-    actual = custom_points(
-        "marts.mart_player_game_log",
-        stats=ACTUAL_STATS,
-        prefix="",
-        week_key=(season, week, position),
-        scoring=settings,
-    ).rename(columns={"custom_points": "actual_custom"})
-    out = out.merge(actual, on="player_id", how="left")
-    out["actual"] = out["actual_custom"].where(out["actual_ppr"].notna())
-    out.loc[out["actual_ppr"].notna() & out["actual"].isna(), "actual"] = 0.0
-    return out
 
 
 def scope_order(scope: str) -> tuple[int, str]:
@@ -324,13 +331,15 @@ else:
         "projections started later in the season."
     )
 
+# Every position for the selected week and format, best projection first. Sections slice
+# it by position; it is computed (and cached) once per week, format and settings.
+everyone = week_sheets(season, week, fmt, settings_json).sort_values(
+    "proj", ascending=False, kind="stable"
+)
+
 headline = headline_numbers()
-projected_count = run(
-    "select count(*) as n from marts.mart_cheat_sheet where season = ? and week = ?",
-    (season, week),
-)["n"].iloc[0]
 metric_columns = st.columns(3)
-metric_columns[0].metric(f"Players projected, week {week}", f"{int(projected_count):,}")
+metric_columns[0].metric(f"Players projected, week {week}", f"{len(everyone):,}")
 if headline:
     metric_columns[1].metric(
         "Less error than a last-3-games average",
@@ -345,8 +354,10 @@ if headline:
         "before kickoff.",
     )
 
-everyone = pd.concat([week_sheet(p) for p in POSITIONS], ignore_index=True)
-everyone = everyone.sort_values("proj", ascending=False)
+
+def position_sheet(position: str) -> pd.DataFrame:
+    """The selected week's sheet for one position, in rank order."""
+    return everyone[everyone["position"] == position].sort_values("rank").reset_index(drop=True)
 
 
 @st.cache_data(ttl=600)
@@ -378,18 +389,12 @@ def as_players(frame: pd.DataFrame) -> list[Any]:
     ]
 
 
-# Section navigation that keeps its place when a widget reruns the script (built-in tabs
-# jump back to the first tab on a rerun), drawn to look like classic tabs.
-SECTIONS = ("Cheat sheet", "Player index", "Start / Sit", "Risers", "Track record")
-section = st.radio(
-    "Section", SECTIONS, horizontal=True, key="section", label_visibility="collapsed"
-)
-
 # Cheat sheet -------------------------------------------------------------------------------
 
-if section == "Cheat sheet":
+
+def cheat_sheet_section() -> None:
     position = str(st.radio("Position", POSITIONS, horizontal=True, key="position"))
-    sheet = week_sheet(position)
+    sheet = position_sheet(position)
     search = st.text_input(
         "Find a player", key="search", placeholder="Name, initials or a close spelling"
     )
@@ -447,6 +452,7 @@ if section == "Cheat sheet":
         )
         points = base.mark_circle(size=70).encode(x="proj:Q")
         st.altair_chart((ranges + points).properties(height=18 * len(chart_rows)), width="stretch")
+
 
 # Player index ------------------------------------------------------------------------------
 
@@ -541,7 +547,7 @@ def use_suggestion(name: str) -> None:
     st.session_state.index_query = name
 
 
-if section == "Player index":
+def player_index_section() -> None:
     roster = season_players(season)
     universe = as_players(roster)
     relevance = dict(zip(everyone["player_id"].astype(str), everyone["proj"], strict=True))
@@ -613,9 +619,11 @@ if section == "Player index":
         elif clear_winner:
             render_player_card(listing.iloc[0])
 
+
 # Start / Sit -----------------------------------------------------------------------------
 
-if section == "Start / Sit":
+
+def start_sit_section() -> None:
     labels = {
         row.player_id: f"{row.player_name} ({row.position}, {row.team})"
         for row in everyone.itertuples()
@@ -635,54 +643,56 @@ if section == "Start / Sit":
     chosen = [by_label[label] for label in chosen_labels]
     if not chosen:
         st.caption("Pick two or three players to compare their projections side by side.")
-    else:
-        picked = everyone.set_index("player_id").loc[chosen].reset_index()
-        picked = picked.sort_values("proj", ascending=False).reset_index(drop=True)
-        columns = st.columns(len(picked))
-        for column, row in zip(columns, picked.to_dict("records"), strict=True):
-            injury = row["injury_status"]
-            with column:
-                st.metric(str(row["player_name"]), f"{row['proj']:.1f}", help="Projected points")
-                st.caption(
-                    f"{row['position']}{row['rank']} | tier {row['tier']} | {row['advice']}\n\n"
-                    f"{row['matchup']}, team total {row['implied_points']:.1f}\n\n"
-                    f"Range {fmt_range(row['floor'], row['ceiling'])}"
-                    + (f"\n\nInjury: {injury}" if injury != "None" else "")
-                )
-        if len(picked) > 1:
-            best, second = picked.iloc[0], picked.iloc[1]
-            margin = best["proj"] - second["proj"]
-            overlap = min(best["ceiling"], second["ceiling"]) - max(best["floor"], second["floor"])
-            width = best["ceiling"] - best["floor"]
-            close = margin < 1.0 or overlap > 0.8 * width
-            st.markdown(
-                f"**Start {best['player_name']}**: projected {margin:.1f} points ahead"
-                + (", a close call given how much the ranges overlap." if close else ".")
+        return
+    picked = everyone.set_index("player_id").loc[chosen].reset_index()
+    picked = picked.sort_values("proj", ascending=False).reset_index(drop=True)
+    columns = st.columns(len(picked))
+    for column, row in zip(columns, picked.to_dict("records"), strict=True):
+        injury = row["injury_status"]
+        with column:
+            st.metric(str(row["player_name"]), f"{row['proj']:.1f}", help="Projected points")
+            st.caption(
+                f"{row['position']}{row['rank']} | tier {row['tier']} | {row['advice']}\n\n"
+                f"{row['matchup']}, team total {row['implied_points']:.1f}\n\n"
+                f"Range {fmt_range(row['floor'], row['ceiling'])}"
+                + (f"\n\nInjury: {injury}" if injury != "None" else "")
             )
-        history = run(
-            "select player_id, week, fantasy_points_ppr, proj_ppr from marts.mart_player_game_log "
-            "where season = ? and week < ? order by week",
-            (season, week),
+    if len(picked) > 1:
+        best, second = picked.iloc[0], picked.iloc[1]
+        margin = best["proj"] - second["proj"]
+        overlap = min(best["ceiling"], second["ceiling"]) - max(best["floor"], second["floor"])
+        width = best["ceiling"] - best["floor"]
+        close = margin < 1.0 or overlap > 0.8 * width
+        st.markdown(
+            f"**Start {best['player_name']}**: projected {margin:.1f} points ahead"
+            + (", a close call given how much the ranges overlap." if close else ".")
         )
-        recent = history[history["player_id"].isin(chosen)]
-        if not recent.empty:
-            recent = recent.assign(player=recent["player_id"].map(labels))
-            st.markdown("**Recent games (PPR)**")
-            st.altair_chart(
-                alt.Chart(recent)
-                .mark_line(point=True)
-                .encode(
-                    x=alt.X("week:O", title="Week"),
-                    y=alt.Y("fantasy_points_ppr:Q", title="PPR points"),
-                    color=alt.Color("player:N", title=None, legend=alt.Legend(orient="bottom")),
-                )
-                .properties(height=240),
-                width="stretch",
+    history = run(
+        "select player_id, week, fantasy_points_ppr, proj_ppr from marts.mart_player_game_log "
+        "where season = ? and week < ? order by week",
+        (season, week),
+    )
+    recent = history[history["player_id"].isin(chosen)]
+    if not recent.empty:
+        recent = recent.assign(player=recent["player_id"].map(labels))
+        st.markdown("**Recent games (PPR)**")
+        st.altair_chart(
+            alt.Chart(recent)
+            .mark_line(point=True)
+            .encode(
+                x=alt.X("week:O", title="Week"),
+                y=alt.Y("fantasy_points_ppr:Q", title="PPR points"),
+                color=alt.Color("player:N", title=None, legend=alt.Legend(orient="bottom")),
             )
+            .properties(height=240),
+            width="stretch",
+        )
+
 
 # Risers ----------------------------------------------------------------------------------
 
-if section == "Risers":
+
+def risers_section() -> None:
     st.caption(
         "Usage over each player's last three games against his earlier games this season "
         "(or last season, early on). Expected PPR points (ffverse expected fantasy points) "
@@ -698,46 +708,46 @@ if section == "Risers":
         movers = movers[movers["is_riser"].astype(bool)]
     if movers.empty:
         st.caption("No usage trends for this week yet (each player needs three games).")
-    else:
-        st.dataframe(
-            pd.DataFrame(
-                {
-                    "Player": movers["player_name"],
-                    "Pos": movers["position"],
-                    "Team": movers["team"],
-                    "xPPR last 3": movers["expected_ppr_recent"].round(1),
-                    "xPPR before": movers["expected_ppr_before"].round(1),
-                    "Change": movers["expected_ppr_change"].round(1),
-                    "Snap share": (movers["snap_share_recent"] * 100).round(0),
-                    "Snap change": (movers["snap_share_change"] * 100).round(0),
-                    "Target share change": (movers["target_share_change"] * 100).round(1),
-                    "This week": movers["proj_ppr"].map(lambda v: "" if pd.isna(v) else f"{v:.1f}"),
-                    "Rank": movers["pos_rank_ppr"].map(lambda v: "" if pd.isna(v) else str(int(v))),
-                }
+        return
+    st.dataframe(
+        pd.DataFrame(
+            {
+                "Player": movers["player_name"],
+                "Pos": movers["position"],
+                "Team": movers["team"],
+                "xPPR last 3": movers["expected_ppr_recent"].round(1),
+                "xPPR before": movers["expected_ppr_before"].round(1),
+                "Change": movers["expected_ppr_change"].round(1),
+                "Snap share": (movers["snap_share_recent"] * 100).round(0),
+                "Snap change": (movers["snap_share_change"] * 100).round(0),
+                "Target share change": (movers["target_share_change"] * 100).round(1),
+                "This week": movers["proj_ppr"].map(lambda v: "" if pd.isna(v) else f"{v:.1f}"),
+                "Rank": movers["pos_rank_ppr"].map(lambda v: "" if pd.isna(v) else str(int(v))),
+            }
+        ),
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "xPPR last 3": st.column_config.NumberColumn(
+                help="Expected PPR points per game over the last three games"
             ),
-            hide_index=True,
-            width="stretch",
-            column_config={
-                "xPPR last 3": st.column_config.NumberColumn(
-                    help="Expected PPR points per game over the last three games"
-                ),
-                "xPPR before": st.column_config.NumberColumn(
-                    help="Expected PPR points per game before that"
-                ),
-                "This week": st.column_config.TextColumn(
-                    help="This week's PPR projection; blank if not projected"
-                ),
-                "Rank": st.column_config.TextColumn(help="Position rank this week"),
-            },
-        )
-        if movers["proj_ppr"].isna().any():
-            st.caption(
-                "Blank projection: not projected this week (bye week or not expected to play)."
-            )
+            "xPPR before": st.column_config.NumberColumn(
+                help="Expected PPR points per game before that"
+            ),
+            "This week": st.column_config.TextColumn(
+                help="This week's PPR projection; blank if not projected"
+            ),
+            "Rank": st.column_config.TextColumn(help="Position rank this week"),
+        },
+    )
+    if movers["proj_ppr"].isna().any():
+        st.caption("Blank projection: not projected this week (bye week or not expected to play).")
+
 
 # Track record ----------------------------------------------------------------------------
 
-if section == "Track record":
+
+def track_record_section() -> None:
     summary = run("select * from marts.mart_backtest_summary order by scope, position, method")
     scopes = sorted(summary["scope"].unique(), key=scope_order, reverse=True)
     scope = st.selectbox("Backtest seasons", scopes, key="scope")
@@ -780,56 +790,71 @@ if section == "Track record":
         "from marts.mart_projection_scorecard order by season, week"
     )
     seasons = sorted(weekly["season"].unique(), reverse=True)
-    if seasons:
-        left, right = st.columns(2)
-        record_season = left.selectbox("Season", seasons, key="record_season")
-        record_position = right.radio("Position", POSITIONS, horizontal=True, key="record_position")
-        detail = weekly[
-            (weekly["season"] == record_season) & (weekly["position"] == record_position)
-        ]
-        detail = detail.assign(
-            mae=detail["abs_error_sum"] / detail["n"],
-            method=detail["method"].map(
-                {
-                    "model": "Model",
-                    "last3": "Last 3 average",
-                    "season_avg": "Season average",
-                    "ecr": "Expert rankings",
-                }
+    if not seasons:
+        return
+    left, right = st.columns(2)
+    record_season = left.selectbox("Season", seasons, key="record_season")
+    record_position = right.radio("Position", POSITIONS, horizontal=True, key="record_position")
+    detail = weekly[(weekly["season"] == record_season) & (weekly["position"] == record_position)]
+    detail = detail.assign(
+        mae=detail["abs_error_sum"] / detail["n"],
+        method=detail["method"].map(
+            {
+                "model": "Model",
+                "last3": "Last 3 average",
+                "season_avg": "Season average",
+                "ecr": "Expert rankings",
+            }
+        ),
+    )
+    mae_chart = (
+        alt.Chart(detail[detail["method"] != "Expert rankings"])
+        .mark_line(point=True)
+        .encode(
+            x=alt.X("week:O", title="Week"),
+            y=alt.Y("mae:Q", title="Mean absolute error (PPR)"),
+            color=alt.Color(
+                "method:N", title=None, scale=METHOD_COLORS, legend=alt.Legend(orient="bottom")
             ),
         )
-        mae_chart = (
-            alt.Chart(detail[detail["method"] != "Expert rankings"])
-            .mark_line(point=True)
-            .encode(
-                x=alt.X("week:O", title="Week"),
-                y=alt.Y("mae:Q", title="Mean absolute error (PPR)"),
-                color=alt.Color(
-                    "method:N", title=None, scale=METHOD_COLORS, legend=alt.Legend(orient="bottom")
-                ),
-            )
-            .properties(height=260, title="Points: lower is better")
+        .properties(height=260, title="Points: lower is better")
+    )
+    rank_chart = (
+        alt.Chart(detail[detail["method"].isin(["Model", "Expert rankings"])])
+        .mark_line(point=True)
+        .encode(
+            x=alt.X("week:O", title="Week"),
+            y=alt.Y("spearman:Q", title="Rank correlation"),
+            color=alt.Color(
+                "method:N", title=None, scale=METHOD_COLORS, legend=alt.Legend(orient="bottom")
+            ),
         )
-        rank_chart = (
-            alt.Chart(detail[detail["method"].isin(["Model", "Expert rankings"])])
-            .mark_line(point=True)
-            .encode(
-                x=alt.X("week:O", title="Week"),
-                y=alt.Y("spearman:Q", title="Rank correlation"),
-                color=alt.Color(
-                    "method:N", title=None, scale=METHOD_COLORS, legend=alt.Legend(orient="bottom")
-                ),
-            )
-            .properties(height=260, title="Ranking: higher is better")
-        )
-        st.altair_chart(mae_chart, width="stretch")
-        st.altair_chart(rank_chart, width="stretch")
-        live_weeks = detail[detail["kind"] == "live"]["week"].unique()
-        st.caption(
-            f"Weeks scored with live (pre-game) projections in {record_season}: "
-            + (", ".join(str(w) for w in sorted(live_weeks)) if len(live_weeks) else "none yet")
-            + ". Other weeks come from the walk-forward backtest."
-        )
+        .properties(height=260, title="Ranking: higher is better")
+    )
+    st.altair_chart(mae_chart, width="stretch")
+    st.altair_chart(rank_chart, width="stretch")
+    live_weeks = detail[detail["kind"] == "live"]["week"].unique()
+    st.caption(
+        f"Weeks scored with live (pre-game) projections in {record_season}: "
+        + (", ".join(str(w) for w in sorted(live_weeks)) if len(live_weeks) else "none yet")
+        + ". Other weeks come from the walk-forward backtest."
+    )
+
+
+# Section navigation that keeps its place when a widget reruns the script (built-in tabs
+# jump back to the first tab on a rerun), drawn to look like classic tabs. Only the
+# selected section runs.
+SECTIONS: dict[str, Callable[[], None]] = {
+    "Cheat sheet": cheat_sheet_section,
+    "Player index": player_index_section,
+    "Start / Sit": start_sit_section,
+    "Risers": risers_section,
+    "Track record": track_record_section,
+}
+section = st.radio(
+    "Section", list(SECTIONS), horizontal=True, key="section", label_visibility="collapsed"
+)
+SECTIONS[str(section)]()
 
 st.markdown(
     f'<div class="gl-footer">Gridiron Lakehouse, built by Rett Wilson. '
