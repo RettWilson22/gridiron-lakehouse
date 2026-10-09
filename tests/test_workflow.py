@@ -8,6 +8,7 @@ import pytest
 from gridiron.projections import PROJECTION_COLUMNS
 from gridiron.workflow import (
     Prepared,
+    backtest_intervals,
     prepare,
     publish,
     run_backtest,
@@ -48,6 +49,29 @@ def test_backtest_covers_test_seasons_and_completed_current_weeks(
         weeks = backtest.loc[backtest["season"] == season, "week"]
         assert (int(weeks.min()), int(weeks.max())) == (1, 4)
     assert set(outputs["metrics"]["method"]) == {"model", "last3", "season_avg", "ecr"}
+
+
+def test_intervals_from_the_published_backtest_match_the_metrics(
+    prepared: Prepared, outputs: dict[str, pd.DataFrame]
+) -> None:
+    intervals = backtest_intervals(prepared, outputs["backtest"], [2025])
+    metrics = outputs["metrics"].set_index(["position", "method"])
+    mae, spearman = metrics["mae"].unstack(), metrics["spearman"].unstack()
+    expected = pd.DataFrame(
+        {
+            "mae_model_minus_last3": mae["model"] - mae["last3"],
+            "mae_model_minus_season_avg": mae["model"] - mae["season_avg"],
+            # NaN for a fixture position with too few players to rank, in both
+            "spearman_model_minus_ecr": spearman["model"] - spearman["ecr"],
+        }
+    )
+    estimates = intervals.pivot(index="position", columns="comparison", values="estimate")
+    pd.testing.assert_frame_equal(estimates, expected, check_names=False)
+    defined = intervals.dropna()
+    assert len(defined) >= len(intervals) // 2
+    assert (
+        (defined["low"] <= defined["estimate"]) & (defined["estimate"] <= defined["high"])
+    ).all()
 
 
 def test_published_projections_join_backtest_and_live_weeks(

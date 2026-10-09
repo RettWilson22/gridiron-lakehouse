@@ -155,3 +155,88 @@ def test_a_single_season_has_no_separate_pooled_scope() -> None:
     metrics = bt.evaluate(projected, ecr, [2024])
     assert list(metrics["scope"].unique()) == ["2024"]  # not also "2024-2024"
     assert bt.pooled_scope(metrics["scope"]) == "2024"
+
+
+def bootstrap_pool(weeks: int = 20, players: int = 10, **misses: float) -> pd.DataFrame:
+    """One position's pool where each method misses every player by a fixed amount (0 when
+    not given) and the experts rank players in the right order."""
+    rows = []
+    for week in range(1, weeks + 1):
+        for i in range(players):
+            actual = float(players - i)
+            rows.append(
+                {
+                    "season": 2024,
+                    "week": week,
+                    "player_id": f"p{i}",
+                    "fantasy_points_ppr": actual,
+                    "proj_ppr": actual + misses.get("model", 0.0),
+                    "baseline_last3": actual + misses.get("last3", 0.0),
+                    "baseline_season_avg": actual + misses.get("season_avg", 0.0),
+                    "ecr": float(i + 1),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def test_bootstrap_of_identical_methods_is_zero() -> None:
+    result = bt.paired_bootstrap(bootstrap_pool(model=1.0, last3=1.0, season_avg=1.0))
+    assert set(result.index) == {
+        "mae_model_minus_last3",
+        "mae_model_minus_season_avg",
+        "spearman_model_minus_ecr",
+    }
+    assert (result[["estimate", "low", "high"]] == 0.0).all().all()
+    assert (result["weeks"] == 20).all()
+
+
+def test_bootstrap_of_a_constant_difference_is_that_difference() -> None:
+    pool = bootstrap_pool(model=1.0, last3=3.0, season_avg=-2.0)
+    pool["ecr"] = -pool["ecr"]  # experts rank in reverse: -1 against the model's 1
+    result = bt.paired_bootstrap(pool)
+    expected = {
+        "mae_model_minus_last3": -2.0,
+        "mae_model_minus_season_avg": -1.0,
+        "spearman_model_minus_ecr": 2.0,
+    }
+    for column in ("estimate", "low", "high"):
+        assert result[column].to_dict() == pytest.approx(expected)
+
+
+def test_bootstrap_resamples_whole_weeks() -> None:
+    # The model ties the season average in week 1 and misses by one more point in week 2.
+    # Drawing two weeks gives 0 (week 1 twice), 0.5 or 1 (week 2 twice) with probability
+    # 1/4, 1/2 and 1/4, so the 95% interval is [0, 1]. Resampling single player-weeks
+    # would give a much narrower interval around 0.5.
+    pool = bootstrap_pool(weeks=2, model=1.0, season_avg=1.0)
+    pool.loc[pool["week"] == 2, "proj_ppr"] += 1.0
+    row = bt.paired_bootstrap(pool).loc["mae_model_minus_season_avg"]
+    assert row["estimate"] == pytest.approx(0.5)
+    assert row["low"] == pytest.approx(0.0)
+    assert row["high"] == pytest.approx(1.0)
+
+
+def test_bootstrap_is_reproducible_and_brackets_a_noisy_difference() -> None:
+    rng = np.random.default_rng(1)
+    pool = bootstrap_pool(weeks=30, players=20)
+    pool["proj_ppr"] += rng.normal(0, 2, len(pool))
+    pool["baseline_season_avg"] += rng.normal(0, 2, len(pool)) + np.sign(rng.normal(size=len(pool)))
+    first = bt.paired_bootstrap(pool)
+    pd.testing.assert_frame_equal(bt.paired_bootstrap(pool), first)
+    row = first.loc["mae_model_minus_season_avg"]
+    assert row["low"] < row["estimate"] < row["high"] < 0  # the model misses by less
+
+
+def test_intervals_estimates_match_the_metrics() -> None:
+    projected, ecr = synthetic()
+    intervals = bt.intervals(projected, ecr, [2024])
+    assert set(intervals["scope"]) == {"2024"}
+    assert set(intervals["weeks"]) == {3}
+    rows = intervals.set_index("comparison")
+    # The model misses every player by 1, the season average by 0 and the last-3 average
+    # by 4 on average; the model and the experts both rank perfectly.
+    assert rows.loc["mae_model_minus_season_avg", "estimate"] == pytest.approx(1.0)
+    assert rows.loc["mae_model_minus_season_avg", "low"] == pytest.approx(1.0)
+    assert rows.loc["mae_model_minus_season_avg", "high"] == pytest.approx(1.0)
+    assert rows.loc["mae_model_minus_last3", "estimate"] == pytest.approx(-3.0)
+    assert rows.loc["spearman_model_minus_ecr", "estimate"] == pytest.approx(0.0)

@@ -21,6 +21,12 @@ out or played without recording a stat (``features.attach_actuals``).
 Metrics per position: MAE, RMSE and bias of PPR points; Spearman rank correlation with the
 actual points, computed within each week and averaged over weeks; and for the model the
 share of actual scores inside its 10th-90th percentile range (80% is ideal).
+
+Intervals (``intervals``): a paired bootstrap over weeks for the model's MAE minus each
+baseline's, and its rank correlation minus the experts'. Weeks are resampled with
+replacement, all players of a drawn week together (players in the same week share the
+same games and news, so they are not independent), and every method is scored on the same
+draws. The intervals are the 2.5th and 97.5th percentiles of ``RESAMPLES`` draws.
 """
 
 from __future__ import annotations
@@ -43,6 +49,8 @@ PREDICTIONS: Final = {
 }
 MIN_PLAYERS_FOR_RANK: Final = 5
 ACTUAL: Final = "fantasy_points_ppr"
+RESAMPLES: Final = 10_000
+SEED: Final = 0
 
 
 def completed(frame: pd.DataFrame) -> pd.DataFrame:
@@ -158,18 +166,24 @@ def candidate_coverage(
     }
 
 
-def _spearman_by_week(pool: pd.DataFrame, prediction: pd.Series) -> tuple[float, int]:
+def _weekly_spearman(pool: pd.DataFrame, prediction: pd.Series) -> pd.Series:
+    """Spearman correlation of ``prediction`` with the actual points in each week; NaN for a
+    week with too few players or where every value ties (the correlation is undefined)."""
+
+    def spearman(week: pd.DataFrame) -> float:
+        ranks = week.rank()
+        if len(week) < MIN_PLAYERS_FOR_RANK or ranks.nunique().min() < 2:
+            return float("nan")
+        return float(ranks["_pred"].corr(ranks[ACTUAL]))
+
     frame = pool.assign(_pred=prediction)
-    values = []
-    for _, week in frame.groupby(["season", "week"]):
-        if len(week) < MIN_PLAYERS_FOR_RANK:
-            continue
-        ranks = week[["_pred", ACTUAL]].rank()
-        if ranks["_pred"].nunique() < 2 or ranks[ACTUAL].nunique() < 2:
-            continue  # a rank correlation is undefined when every value ties
-        values.append(ranks["_pred"].corr(ranks[ACTUAL]))
-    clean = [v for v in values if not np.isnan(v)]
-    return (float(np.mean(clean)) if clean else float("nan")), len(clean)
+    weekly: pd.Series = frame.groupby(["season", "week"])[["_pred", ACTUAL]].apply(spearman)
+    return weekly
+
+
+def _spearman_by_week(pool: pd.DataFrame, prediction: pd.Series) -> tuple[float, int]:
+    values = _weekly_spearman(pool, prediction).dropna()
+    return (float(values.mean()) if len(values) else float("nan")), len(values)
 
 
 def score_methods(pool: pd.DataFrame) -> list[dict[str, float | int | str]]:
@@ -199,6 +213,83 @@ def score_methods(pool: pd.DataFrame) -> list[dict[str, float | int | str]]:
     return rows
 
 
+def paired_bootstrap(
+    pool: pd.DataFrame, resamples: int = RESAMPLES, seed: int = SEED
+) -> pd.DataFrame:
+    """Paired week-level bootstrap of the model against each benchmark, for one position's
+    pool. One row per comparison (the model's MAE minus each baseline's, its rank
+    correlation minus the experts'): the number of weeks, the estimate (from the pool as it
+    is) and the 95% percentile interval."""
+    actual = pool[ACTUAL].astype("float64")
+    errors = pd.DataFrame(
+        {
+            method: (pool[column].astype("float64") - actual).abs()
+            for method, column in PREDICTIONS.items()
+        }
+    )
+    weekly = errors.groupby([pool["season"], pool["week"]])
+    by_week = weekly.sum().assign(
+        rows=weekly.size(),
+        rho_model=_weekly_spearman(pool, pool["proj_ppr"]),
+        rho_ecr=_weekly_spearman(pool, -pool["ecr"]),
+    )
+    weeks = len(by_week)
+    rng = np.random.default_rng(seed)
+    # How often each week is drawn: row 0 is the pool as it is, the rest are resamples.
+    weights = np.vstack(
+        [np.ones(weeks), rng.multinomial(weeks, np.full(weeks, 1 / weeks), size=resamples)]
+    )
+
+    def mae(method: str) -> np.ndarray:
+        total = weights @ by_week[method].to_numpy(dtype="float64")
+        return np.asarray(total / (weights @ by_week["rows"].to_numpy(dtype="float64")))
+
+    def mean_over_weeks(column: str) -> np.ndarray:  # weeks where it is defined
+        values = by_week[column].to_numpy(dtype="float64")
+        defined = ~np.isnan(values)
+        with np.errstate(invalid="ignore"):  # NaN when no drawn week is defined
+            total = weights @ np.where(defined, values, 0.0)
+            return np.asarray(total / (weights @ defined.astype("float64")))
+
+    differences = {
+        "mae_model_minus_last3": mae("model") - mae("last3"),
+        "mae_model_minus_season_avg": mae("model") - mae("season_avg"),
+        "spearman_model_minus_ecr": mean_over_weeks("rho_model") - mean_over_weeks("rho_ecr"),
+    }
+    draws = np.vstack(list(differences.values()))
+    low, high = np.percentile(draws[:, 1:], [2.5, 97.5], axis=1)
+    return pd.DataFrame(
+        {"weeks": weeks, "estimate": draws[:, 0], "low": low, "high": high},
+        index=pd.Index(list(differences), name="comparison"),
+    )
+
+
+def _scopes(seasons: list[int]) -> list[tuple[str, list[int]]]:
+    """Each season, and all of them together when there are several."""
+    scopes = [(str(s), [s]) for s in seasons]
+    if len(seasons) > 1:
+        scopes.append((f"{seasons[0]}-{seasons[-1]}", seasons))
+    return scopes
+
+
+def intervals(
+    projected: pd.DataFrame,
+    ecr: pd.DataFrame,
+    seasons: Iterable[int],
+    resamples: int = RESAMPLES,
+    seed: int = SEED,
+) -> pd.DataFrame:
+    """``paired_bootstrap`` per scope and position, on the same pool as ``evaluate``."""
+    seasons = sorted(set(seasons))
+    pool = evaluation_pool(attach_ecr(projected[projected["season"].isin(seasons)], ecr))
+    parts = {
+        (scope, position): paired_bootstrap(group, resamples, seed)
+        for scope, scope_seasons in _scopes(seasons)
+        for position, group in pool[pool["season"].isin(scope_seasons)].groupby("position")
+    }
+    return pd.concat(parts, names=["scope", "position"]).reset_index()
+
+
 def evaluate(projected: pd.DataFrame, ecr: pd.DataFrame, seasons: Iterable[int]) -> pd.DataFrame:
     """Backtest metrics per scope (each season, and all seasons together when there are
     several) and position."""
@@ -206,10 +297,7 @@ def evaluate(projected: pd.DataFrame, ecr: pd.DataFrame, seasons: Iterable[int])
     scored = attach_ecr(projected[projected["season"].isin(seasons)], ecr)
     pool = evaluation_pool(scored)
     records = []
-    scopes = [(str(s), [s]) for s in seasons]
-    if len(seasons) > 1:
-        scopes.append((f"{seasons[0]}-{seasons[-1]}", seasons))
-    for scope, scope_seasons in scopes:
+    for scope, scope_seasons in _scopes(seasons):
         coverage = pool_coverage(scored[scored["season"].isin(scope_seasons)], ecr, scope_seasons)
         for position, group in pool[pool["season"].isin(scope_seasons)].groupby("position"):
             for row in score_methods(group):

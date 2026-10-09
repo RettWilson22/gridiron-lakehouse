@@ -106,6 +106,16 @@ def run_backtest(
     return published, metrics
 
 
+def backtest_intervals(
+    prepared: Prepared, backtest_projections: pd.DataFrame, test_seasons: Iterable[int]
+) -> pd.DataFrame:
+    """Bootstrap intervals for the test seasons (``backtest.intervals``), from the published
+    backtest projections with the actual points put back."""
+    actuals = prepared.frame[[*fx.KEY, bt.ACTUAL]]
+    scored = backtest_projections.drop(columns="ecr_rank").merge(actuals, on=fx.KEY)
+    return bt.intervals(scored, prepared.tables["ecr"], test_seasons)
+
+
 def reused_versions(stored: pd.DataFrame | None, published: pd.DataFrame) -> list[str]:
     """Backtest model versions present in both the stored and the new projections."""
     if stored is None or "model_version" not in stored:
