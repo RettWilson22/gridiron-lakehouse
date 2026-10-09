@@ -72,7 +72,8 @@ snapshot:  ## Export the public snapshot from data/lakehouse (see the script for
 bundle-validate:  ## databricks bundle validate (needs the Databricks CLI and auth)
 	cd databricks && databricks bundle validate -t $(TARGET)
 
-bundle-deploy:  ## databricks bundle deploy
+bundle-deploy:  ## databricks bundle deploy (clears dist/: the job installs every wheel in it)
+	rm -rf dist
 	cd databricks && databricks bundle deploy -t $(TARGET)
 
 bundle-run:  ## Run the end-to-end Databricks job

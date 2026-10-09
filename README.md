@@ -329,13 +329,16 @@ this version onto it.
 ### Databricks (Free Edition)
 
 ```bash
+rm -rf dist                      # the job installs every wheel in dist/; drop old versions
 cd databricks
 databricks bundle deploy -t prod
 databricks bundle run -t prod gridiron_refresh
 ```
 
 The bundle builds the package as a wheel on deploy (`artifacts:`), and the job and pipeline
-install `dist/*.whl` (serverless cannot install editable packages from workspace files). Job
+install `dist/*.whl` (serverless cannot install editable packages from workspace files), so
+a wheel left over from an older version would be installed too; `make bundle-deploy` clears
+`dist/` first. Job
 entry points only call `sys.exit` on failure, because Databricks treats any `SystemExit`,
 even code 0, as a failed task. The job has five tasks, run in sequence: `ingest`,
 `transform` (the pipeline), `train`, `score`, `publish_serving`. The first run downloads
