@@ -20,6 +20,7 @@ export. Steps:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import shutil
@@ -27,6 +28,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from types import ModuleType
 
 import duckdb
 
@@ -177,7 +179,20 @@ EXPORTED_COLUMNS: dict[str, tuple[str, ...]] = {
         "pool_coverage",
     ),
 }
-MARTS = tuple(EXPORTED_COLUMNS)
+
+
+def _app_data_access() -> ModuleType:
+    """The app's data module. It runs in Streamlit in Snowflake without this repository,
+    so it holds the list of marts the app reads, and the export reuses it."""
+    path = ROOT / "snowflake" / "streamlit" / "data_access.py"
+    spec = importlib.util.spec_from_file_location("gridiron_app_data_access", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+MARTS: tuple[str, ...] = tuple(_app_data_access().MARTS)
 # Exported as typed NULLs: the app expects the column, but per-player FantasyPros ranks
 # are third-party content, so the public copy keeps only the accuracy comparison against
 # them (mart_backtest_summary), not the ranks themselves.
@@ -224,7 +239,8 @@ def export_marts(database: Path, out_dir: Path) -> dict[str, int]:
     out_dir.mkdir(parents=True, exist_ok=True)
     rows = {}
     with duckdb.connect(str(database), read_only=True) as con:
-        for mart, columns in EXPORTED_COLUMNS.items():
+        for mart in MARTS:
+            columns = EXPORTED_COLUMNS[mart]
             target = (out_dir / f"{mart}.parquet").as_posix()
             blanked = BLANKED_COLUMNS.get(mart, {})
             select = ", ".join(

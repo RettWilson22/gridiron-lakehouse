@@ -49,10 +49,6 @@ class Dataset:
     required: bool = True
     normalize_types: bool = True
 
-    @property
-    def seasonal(self) -> bool:
-        return self.kind != "snapshot"
-
     def season_url(self, season: int) -> str:
         if self.kind != "seasonal":
             raise ValueError(f"{self.name} is not published per season")
@@ -127,10 +123,6 @@ DATASETS: Final[dict[str, Dataset]] = {
         ),
     )
 }
-
-# Snapshot datasets that are landed once per run regardless of the season range.
-SNAPSHOT_DATASETS: Final = tuple(n for n, d in DATASETS.items() if d.kind == "snapshot")
-SEASONAL_DATASETS: Final = tuple(n for n, d in DATASETS.items() if d.kind == "seasonal")
 
 # FantasyPros weekly positional rankings (ecr_type "wp") for the modelled positions.
 ECR_TYPE_WEEKLY_POSITIONAL: Final = "wp"
