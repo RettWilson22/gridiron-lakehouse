@@ -114,6 +114,8 @@ def test_public_mode_reads_an_exported_snapshot(
 ) -> None:
     rows = load_exporter().export_marts(CI_DB, tmp_path)
     assert rows["mart_cheat_sheet"] > 0
+    exported = pd.read_parquet(tmp_path / "mart_cheat_sheet.parquet")
+    assert exported["ecr_rank"].isna().all()  # third-party ranks stay out of the public copy
     monkeypatch.setenv("GRIDIRON_SNAPSHOT_DIR", str(tmp_path))
     monkeypatch.delenv("GRIDIRON_APP_MODE", raising=False)
     test = AppTest.from_file(str(PUBLIC_APP), default_timeout=120)
