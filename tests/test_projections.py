@@ -158,3 +158,52 @@ def test_risers_compare_the_last_three_games_with_earlier_ones() -> None:
     assert frame["expected_ppr_change"] == pytest.approx(13.0 - 13.0 / 3)
     assert frame["snap_share_change"] == pytest.approx(0.4)
     assert frame["baseline_basis"] == "earlier games this season"
+
+
+def usage_row(
+    season: int, week: int, player_id: str, xfp: float, **usage: float
+) -> dict[str, object]:
+    return {
+        "season": season,
+        "week": week,
+        "player_id": player_id,
+        "player_name": player_id.upper(),
+        "position": "RB",
+        "team": "CHI" if season == 2026 else "GB",
+        "snap_share": usage.get("snap_share", 0.6),
+        "target_share": 0.1,
+        "carry_share": usage.get("carry_share", 0.3),
+        "red_zone_share": 0.2,
+        "expected_ppr": xfp,
+    }
+
+
+def test_risers_fall_back_to_last_season_early_in_the_season() -> None:
+    rows = [usage_row(2025, w, "vet", 6.0, carry_share=0.2) for w in (1, 2, 3, 4)]
+    rows += [usage_row(2025, w, "vet", 10.0, carry_share=0.4) for w in (5, 6)]
+    # Four games this season: three recent ones and only one earlier, too few to compare.
+    rows += [usage_row(2026, w, "vet", x) for w, x in ((1, 3.0), (2, 9.0), (3, 12.0), (4, 15.0))]
+    rows += [usage_row(2026, w, "rookie", 9.0) for w in (1, 2, 3, 4)]  # no 2025 games
+    rows += [usage_row(2026, w, "short", 9.0) for w in (1, 2)]  # not three games yet
+    out = risers(pd.DataFrame(rows), [(2026, 5)])
+
+    assert list(out["player_id"]) == ["vet"]  # the others have no baseline yet
+    vet = out.iloc[0]
+    assert vet["baseline_basis"] == "last season"
+    assert (vet["games_recent"], vet["games_earlier"]) == (3, 1)
+    assert vet["expected_ppr_recent"] == pytest.approx(12.0)
+    assert vet["expected_ppr_before"] == pytest.approx((4 * 6.0 + 2 * 10.0) / 6)
+    assert vet["carry_share_before"] == pytest.approx((4 * 0.2 + 2 * 0.4) / 6)
+    assert vet["team"] == "CHI"  # identity comes from his latest game
+    assert vet["is_riser"]
+    assert vet["riser_rank"] == 1
+
+
+def test_risers_rank_ties_by_player_id() -> None:
+    rows = []
+    for player in ("b", "a", "c"):
+        xfps = (2.0, 2.0, 8.0, 8.0, 8.0) if player != "c" else (2.0, 2.0, 9.0, 9.0, 9.0)
+        rows += [usage_row(2026, w, player, x) for w, x in enumerate(xfps, start=1)]
+    out = risers(pd.DataFrame(rows), [(2026, 6)])
+    assert list(out["player_id"]) == ["c", "a", "b"]
+    assert list(out["riser_rank"]) == [1, 2, 3]
