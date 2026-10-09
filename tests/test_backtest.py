@@ -6,6 +6,7 @@ import pytest
 
 from gridiron import backtest as bt
 from gridiron.model import ProjectionModel
+from gridiron.tiers import POOL
 from gridiron.workflow import Prepared
 
 
@@ -66,7 +67,7 @@ def test_pool_uses_the_expert_top_n_and_complete_rows() -> None:
     projected, ecr = synthetic(players=80)
     projected.loc[projected["player_id"] == "p3", "baseline_last3"] = np.nan
     pool = bt.evaluation_pool(bt.attach_ecr(projected, ecr))
-    assert pool["ecr_rank"].max() == bt.TOP_N["WR"]
+    assert pool["ecr_rank"].max() == POOL["WR"]
     assert "p3" not in set(pool["player_id"])
 
 

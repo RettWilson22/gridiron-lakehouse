@@ -118,6 +118,8 @@ def test_start_sit_and_other_sections(app: AppTest) -> None:
     open_section(app, "Risers")
     app.toggle(key="all_changes").set_value(True).run()
     open_section(app, "Track record")
+    captions = " ".join(c.value for c in app.caption)
+    assert "top 24 QBs, 48 RBs, 72 WRs and 24 TEs that week" in captions
     app.selectbox(key="scope").set_value(app.selectbox(key="scope").options[-1]).run()
     app.radio(key="record_position").set_value("TE").run()
     assert not app.exception

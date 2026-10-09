@@ -97,7 +97,8 @@ BEGIN
 END;
 $$;
 
--- Weekly accuracy over the backtest's evaluation pool (FantasyPros positional top N).
+-- Weekly accuracy over the backtest's evaluation pool (FantasyPros positional top N; the
+-- sizes in the DECODE are gridiron.tiers.POOL, and a test checks they match).
 CREATE OR REPLACE VIEW APP.WEEKLY_ACCURACY AS
 SELECT
   SEASON,

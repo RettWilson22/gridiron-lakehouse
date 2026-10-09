@@ -16,7 +16,8 @@ vars:
   gold_source: synced
   # DuckDB targets only: directory of serving-table Parquet files (relative to this project).
   gold_dir: ../../tests/fixtures/gold
-  # Positional top-N that defines the backtest evaluation pool (mirrors gridiron.backtest).
+  # Positional top-N that defines the backtest evaluation pool. Mirrors gridiron.tiers.POOL;
+  # tests/test_snowflake_objects.py checks they match.
   pool_size: {"QB": 24, "RB": 48, "WR": 72, "TE": 24}
 
 models:

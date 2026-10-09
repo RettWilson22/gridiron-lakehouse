@@ -13,10 +13,9 @@ from typing import Final
 import numpy as np
 import pandas as pd
 
-from gridiron.backtest import TOP_N, with_baselines
-from gridiron.features import COMPONENTS, KEY
+from gridiron.features import COMPONENTS, KEY, with_baselines
 from gridiron.model import FORMATS
-from gridiron.tiers import assign_tiers, start_sit
+from gridiron.tiers import POOL, assign_tiers, start_sit
 
 PROJECTION_COLUMNS: Final = (
     "season",
@@ -150,7 +149,7 @@ def assemble(backtest: pd.DataFrame, live: pd.DataFrame | None, ecr: pd.DataFram
 def add_rankings(frame: pd.DataFrame) -> pd.DataFrame:
     """Positional rank, tier and start/sit label per week in each scoring format.
 
-    Tiers are computed among the top ``TOP_N`` players at the position (the pool a
+    Tiers are computed among the top ``tiers.POOL`` players at the position (the pool a
     12-team league would consider); players below that get no tier.
     """
     out = frame.copy()
@@ -165,7 +164,7 @@ def add_rankings(frame: pd.DataFrame) -> pd.DataFrame:
         ]
         tiers = pd.Series(np.nan, index=out.index)
         for (_, _, position), group in out.groupby(["season", "week", "position"]):
-            pool = group[group[f"pos_rank_{fmt}"] <= TOP_N[str(position)]]
+            pool = group[group[f"pos_rank_{fmt}"] <= POOL[str(position)]]
             tiers.loc[pool.index] = np.asarray(assign_tiers(pool[projection].tolist()), "float64")
         out[f"tier_{fmt}"] = tiers.astype("Int64")
     return out

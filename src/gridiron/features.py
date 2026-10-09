@@ -431,6 +431,19 @@ def build_features(candidates: pd.DataFrame, tables: Mapping[str, pd.DataFrame])
     return frame.sort_values(KEY).reset_index(drop=True)
 
 
+def with_baselines(frame: pd.DataFrame) -> pd.DataFrame:
+    """Baseline projections, computed from the same pre-game features.
+
+    * last 3 games: average PPR over the player's last three games (may span seasons);
+    * season to date: average over this season's earlier games, or last season's average
+      before the player's first game of the season.
+    """
+    out = frame.copy()
+    out["baseline_last3"] = out["ppr_last3"]
+    out["baseline_season_avg"] = out["season_ppr_mean"].fillna(out["prev_season_ppr_mean"])
+    return out
+
+
 def attach_actuals(features: pd.DataFrame, player_week: pd.DataFrame) -> pd.DataFrame:
     """Add what actually happened: stat components and points. A candidate without a stat
     row for the game (inactive, or active without recording a stat) scores zero."""
