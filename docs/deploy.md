@@ -82,11 +82,20 @@ snow sql -f snowflake/setup/01_warehouse_and_monitor.sql   # X-Small warehouse, 
 snow sql -f snowflake/setup/02_database_and_roles.sql      # GRIDIRON database, schemas, roles, users
 ```
 
-Both scripts are idempotent. The second creates four roles (`GRIDIRON_ADMIN`,
-`GRIDIRON_LOADER`, `GRIDIRON_TRANSFORMER`, `GRIDIRON_READER`) and two service users:
-`GRIDIRON_SYNC` (role `GRIDIRON_LOADER`, writes `SYNCED` only) and `GRIDIRON_DBT` (role
-`GRIDIRON_TRANSFORMER`, builds `STAGING` and `MARTS`). Service users cannot log in with a
-password.
+Both scripts are idempotent. The second creates five roles and two service users:
+
+* `GRIDIRON_ADMIN` owns the database and runs the setup scripts;
+* `GRIDIRON_LOADER` writes `SYNCED` only (including the temporary stage `write_pandas`
+  loads through), used by the service user `GRIDIRON_SYNC`;
+* `GRIDIRON_TRANSFORMER` reads `SYNCED` (or `ICEBERG`) and builds `STAGING` and `MARTS`,
+  used by the service user `GRIDIRON_DBT`;
+* `GRIDIRON_APP_OWNER` owns the Streamlit app. Streamlit in Snowflake runs an app's
+  queries with its owner's rights, so this role can only read `MARTS`, call
+  `APP.FANTASY_POINTS` and use the warehouse;
+* `GRIDIRON_READER` is for viewers and analysts: `MARTS` and `APP`, not `STAGING`.
+
+Service users cannot log in with a password. The script grants `GRIDIRON_ADMIN` and
+`GRIDIRON_APP_OWNER` to the user who runs it.
 
 ### 3.2 Key pairs
 
@@ -149,10 +158,23 @@ snow sql -f snowflake/streamlit/01_create_streamlit.sql
   backfills every week) and the task `APP.MAINTAIN_PROJECTION_RESULTS` (Tuesdays 14:00 UTC,
   skipped when both streams are empty), which rebuilds every week that either stream
   touched. To run it now, use the `EXECUTE TASK` line commented at the end of the script.
+* The UDF script grants `GRIDIRON_APP_OWNER` usage on `APP.FANTASY_POINTS` each time it
+  replaces the function.
+* The app script uploads the files as `GRIDIRON_ADMIN`, then drops the app if it exists
+  and creates it again as `GRIDIRON_APP_OWNER` (an app created by an earlier version of
+  the script was owned by `GRIDIRON_ADMIN`).
 * The app is created on the warehouse runtime (`RUNTIME_NAME = 'SYSTEM$WAREHOUSE_RUNTIME'`),
   because trial accounts cannot always start the compute pool the container runtime needs.
   `snowflake/streamlit/environment.yml` pins Streamlit 1.52.2, the newest in the Snowflake
   channel. Viewers need only `GRIDIRON_READER`.
+
+### 3.5 Updating an existing deployment
+
+The scripts are idempotent, so an update reruns them in the same order:
+`02_database_and_roles.sql` (as ACCOUNTADMIN), `01_create_udf.sql`, the dbt build, the
+stream and task script and the app script. The stream and task script keeps existing
+streams and adds any new one; a new stream starts with every existing row, so the task's
+next run rebuilds every week once.
 
 ## 4. The public copy (Streamlit Community Cloud)
 

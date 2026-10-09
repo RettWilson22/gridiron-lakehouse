@@ -79,3 +79,38 @@ def test_every_results_stream_wakes_the_task_and_feeds_the_changed_weeks() -> No
     for stream, _ in streams:
         assert f"SYSTEM$STREAM_HAS_DATA('GRIDIRON.{stream}')" in when.group(1), stream
         assert f"FROM {stream}" in changed.group(0), stream
+
+
+def grants_to(role: str, sql: str) -> list[str]:
+    """Every GRANT statement to ``role`` in a script, comments removed, on one line."""
+    statements = " ".join(re.sub(r"--[^\n]*", "", sql).split()).split(";")
+    return [
+        s.strip() for s in statements if s.strip().startswith("GRANT ") and f"TO ROLE {role}" in s
+    ]
+
+
+def test_the_app_owner_role_only_reaches_marts_and_the_scoring_function() -> None:
+    roles = (SNOWFLAKE / "setup" / "02_database_and_roles.sql").read_text()
+    udf = (SNOWFLAKE / "snowpark" / "01_create_udf.sql").read_text()
+    assert "CREATE ROLE IF NOT EXISTS GRIDIRON_APP_OWNER;" in roles
+    grants = grants_to("GRIDIRON_APP_OWNER", roles + udf)
+    assert grants
+    for grant in grants:
+        assert not re.search(r"SYNCED|STAGING|ICEBERG|ALL FUNCTIONS|FUTURE FUNCTIONS", grant), grant
+    assert any("CREATE STREAMLIT ON SCHEMA GRIDIRON.APP" in g for g in grants)
+    assert any("ON FUNCTION APP.FANTASY_POINTS(OBJECT, OBJECT)" in g for g in grants)
+
+
+def test_the_app_is_created_as_the_app_owner() -> None:
+    sql = (SNOWFLAKE / "streamlit" / "01_create_streamlit.sql").read_text()
+    owner = sql.index("USE ROLE GRIDIRON_APP_OWNER;")
+    assert owner < sql.index("CREATE STREAMLIT")
+    assert "USE ROLE" not in sql[owner + 1 : sql.index("CREATE STREAMLIT")]
+
+
+def test_reader_and_loader_grants() -> None:
+    roles = (SNOWFLAKE / "setup" / "02_database_and_roles.sql").read_text()
+    reader = grants_to("GRIDIRON_READER", roles)
+    assert reader and not [g for g in reader if "STAGING" in g]
+    loader = grants_to("GRIDIRON_LOADER", roles)
+    assert any("CREATE STAGE ON SCHEMA GRIDIRON.SYNCED" in g for g in loader)  # write_pandas

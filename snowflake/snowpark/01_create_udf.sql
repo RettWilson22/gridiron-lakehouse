@@ -34,6 +34,10 @@ HANDLER = 'scoring.udf_handler'
 IMPORTS = ('@APP.CODE/scoring.py')
 COMMENT = 'Fantasy points for a stat line under custom league scoring (gridiron)';
 
+-- The Streamlit app runs with its owner's rights and scores custom settings with this
+-- function. CREATE OR REPLACE drops grants on the function, so grant it on every run.
+GRANT USAGE ON FUNCTION APP.FANTASY_POINTS(OBJECT, OBJECT) TO ROLE GRIDIRON_APP_OWNER;
+
 -- 6 catches, 80 yards, a touchdown: 20 in PPR, 17 in half PPR, 14 in standard.
 SELECT
   APP.FANTASY_POINTS(OBJECT_CONSTRUCT('receptions', 6, 'receiving_yards', 80, 'receiving_tds', 1), NULL) AS PPR,
