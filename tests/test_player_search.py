@@ -32,8 +32,8 @@ PLAYERS = [
 ]
 
 
-def names(query: str, **kwargs: object) -> list[str]:
-    return [m.player.name for m in search(PLAYERS, query, **kwargs)]  # type: ignore[arg-type]
+def names(query: str, relevance: dict[str, float] | None = None) -> list[str]:
+    return [m.player.name for m in search(PLAYERS, query, relevance)]
 
 
 def test_normalize_ignores_case_accents_and_punctuation() -> None:
