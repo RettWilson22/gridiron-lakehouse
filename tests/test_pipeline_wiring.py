@@ -20,6 +20,7 @@ import pytest
 from pyspark.sql import DataFrame, SparkSession
 
 from gridiron import quality
+from gridiron.config import FIRST_SEASON
 from gridiron.lakehouse import BRONZE_TABLES, GOLD_TABLES, SILVER_TABLES
 
 PIPELINE_FILE = Path(__file__).parent.parent / "databricks" / "pipelines" / "gridiron_pipeline.py"
@@ -69,11 +70,16 @@ def pipeline(
     spark.conf.set("gridiron.first_season", "2018")
     for dataset, table in BRONZE_TABLES.items():
         bronze[dataset].createOrReplaceTempView(table)
+    load_pipeline()
+    return fake
 
+
+def load_pipeline() -> ModuleType:
     spec = importlib.util.spec_from_file_location("gridiron_pipeline", PIPELINE_FILE)
     assert spec and spec.loader
-    spec.loader.exec_module(importlib.util.module_from_spec(spec))
-    return fake
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_pipeline_declares_the_same_graph_as_the_local_build(pipeline: RecordingPipelines) -> None:
@@ -94,6 +100,13 @@ def test_expectations_match_the_quality_rules(pipeline: RecordingPipelines) -> N
 def test_bronze_tables_read_their_landing_folders(pipeline: RecordingPipelines) -> None:
     for dataset, table in BRONZE_TABLES.items():
         assert dataset in pipeline.datasets[table]["options"]["comment"]
+
+
+def test_first_season_defaults_when_not_configured(
+    pipeline: RecordingPipelines, spark: SparkSession
+) -> None:
+    spark.conf.unset("gridiron.first_season")
+    assert load_pipeline().SEASON_FLOOR == FIRST_SEASON
 
 
 def test_pipeline_datasets_build_from_upstream_views(pipeline: RecordingPipelines) -> None:

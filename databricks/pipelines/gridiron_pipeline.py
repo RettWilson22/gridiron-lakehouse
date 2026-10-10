@@ -30,7 +30,7 @@ from gridiron.lakehouse import BRONZE_TABLES
 
 spark = SparkSession.active()
 LANDING_ROOT = spark.conf.get("gridiron.landing_root")
-SEASON_FLOOR = int(spark.conf.get("gridiron.first_season") or FIRST_SEASON)
+SEASON_FLOOR = int(spark.conf.get("gridiron.first_season", None) or FIRST_SEASON)
 
 
 def _declare_bronze(dataset: str, table: str) -> None:
