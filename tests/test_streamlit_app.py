@@ -8,6 +8,7 @@ for Streamlit in Snowflake.
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -251,6 +252,20 @@ def test_no_week_is_labelled_upcoming_after_the_season(
     week = test.sidebar.selectbox[0]
     assert week.options  # labels read "Week N"
     assert not any("(upcoming)" in label for label in week.options)
+
+
+def test_public_mode_reimports_helpers_a_push_may_have_changed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    load_exporter().export_marts(CI_DB, tmp_path)
+    monkeypatch.setenv("GRIDIRON_SNAPSHOT_DIR", str(tmp_path))
+    monkeypatch.delenv("GRIDIRON_APP_MODE", raising=False)
+    stale = ModuleType("gridiron.player_search")  # an old copy left over from before a push
+    monkeypatch.setitem(sys.modules, "gridiron.player_search", stale)
+    test = AppTest.from_file(str(PUBLIC_APP), default_timeout=120)
+    test.run()
+    assert not test.exception
+    assert sys.modules["gridiron.player_search"] is not stale
 
 
 HOSTILE_NAME = '<iframe srcdoc="<script>alert(1)</script>"></iframe> [x](https://evil.test)'

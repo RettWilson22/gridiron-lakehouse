@@ -19,4 +19,8 @@ os.environ["GRIDIRON_APP_MODE"] = "public"
 os.environ.setdefault("GRIDIRON_SNAPSHOT_DIR", str(HERE / "snapshot"))
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
+# Community Cloud pulls a push into the running app, but Streamlit only reloads modules from
+# this folder, so drop the helpers the app imports from elsewhere and let it load them fresh.
+for name in ("data_access", "gridiron.tiers", "gridiron.player_search"):
+    sys.modules.pop(name, None)
 runpy.run_path(str(APP_DIR / "streamlit_app.py"), run_name="__main__")
