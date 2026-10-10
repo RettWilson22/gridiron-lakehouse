@@ -13,6 +13,9 @@ resources:
         quartz_cron_expression: "0 0 12 ? * TUE,THU,SAT"
         timezone_id: UTC
       max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - ${var.alert_email}
       environments:
         - environment_key: default
           spec:
@@ -20,9 +23,15 @@ resources:
             dependencies:
               - ../../dist/*.whl
               - mlflow>=3.1,<4
-      # Five tasks, run one after another (Free Edition allows five concurrent tasks).
+      # Five tasks, run one after another (Free Edition allows five concurrent tasks). Every
+      # task is safe to rerun, so each retries transient failures (a flaky download, serverless
+      # capacity) and times out at several times its usual length: ingest 1.5 min, pipeline
+      # 3.5, train 5 (18 when every model refits), score 1.5, publish 1.
       tasks:
         - task_key: ingest
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 1800
           environment_key: default
           spark_python_task:
             python_file: ../jobs/ingest.py
@@ -33,12 +42,18 @@ resources:
               - ${var.first_season}
 
         - task_key: transform
+          max_retries: 1
+          min_retry_interval_millis: 300000
+          timeout_seconds: 3600
           depends_on:
             - task_key: ingest
           pipeline_task:
             pipeline_id: ${resources.pipelines.gridiron_pipeline.id}
 
         - task_key: train
+          max_retries: 1
+          min_retry_interval_millis: 300000
+          timeout_seconds: 5400
           depends_on:
             - task_key: transform
           environment_key: default
@@ -55,6 +70,9 @@ resources:
               - ${var.test_seasons}
 
         - task_key: score
+          max_retries: 1
+          min_retry_interval_millis: 300000
+          timeout_seconds: 1800
           depends_on:
             - task_key: train
           environment_key: default
@@ -67,6 +85,9 @@ resources:
               - ${resources.schemas.gridiron.name}
 
         - task_key: publish_serving
+          max_retries: 1
+          min_retry_interval_millis: 300000
+          timeout_seconds: 1800
           depends_on:
             - task_key: score
           environment_key: default

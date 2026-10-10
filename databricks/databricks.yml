@@ -43,6 +43,9 @@ variables:
   test_seasons:
     description: Completed seasons scored by the walk-forward backtest (comma separated).
     default: "2023,2024,2025"
+  alert_email:
+    description: Address emailed when a gridiron-refresh run fails.
+    default: ${workspace.current_user.userName}
 
 targets:
   # Development mode prefixes resource names, including the schemas, with

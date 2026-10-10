@@ -49,7 +49,10 @@ The bundle (`databricks/`) creates the `gridiron` and `gridiron_serving` schemas
 `workspace` catalog, a `landing` volume, the Lakeflow pipeline and the `gridiron-refresh`
 job. The job has five tasks run in sequence: `ingest`, `transform` (the pipeline), `train`,
 `score`, `publish_serving`, and is scheduled for Tuesday, Thursday and Saturday at 12:00 UTC
-(the `dev` target prefixes names and pauses the schedule).
+(the `dev` target prefixes names and pauses the schedule). Each task retries after five
+minutes (ingest twice, the rest once) and times out at several times its usual length. A
+failed run emails the bundle variable `alert_email`, which defaults to the user who deploys;
+pass `--var alert_email=<address>` to `databricks bundle deploy` to send it elsewhere.
 
 Two deployment details:
 

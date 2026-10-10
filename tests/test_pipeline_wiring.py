@@ -144,3 +144,14 @@ def test_job_dependencies_have_upper_bounds() -> None:
     for spec in packages:
         if not spec.endswith(".whl"):
             assert ">=" in spec and "<" in spec.replace("<=", ""), spec
+
+
+def test_every_job_task_retries_times_out_and_alerts_on_failure() -> None:
+    job = (PIPELINE_FILE.parent.parent / "resources" / "job.yml").read_text()
+    assert re.search(r"email_notifications:\n\s+on_failure:\n\s+- \$\{var\.alert_email\}", job)
+    tasks = re.split(r"(?m)^ {8}- task_key: ", job)[1:]
+    assert len(tasks) == 5
+    for task in tasks:
+        name = task.split()[0]
+        for setting in ("max_retries", "min_retry_interval_millis", "timeout_seconds"):
+            assert re.search(rf"(?m)^ {{10}}{setting}: [1-9]\d*$", task), (name, setting)
