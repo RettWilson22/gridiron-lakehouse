@@ -20,7 +20,8 @@ GRANT READ ON STAGE APP.STREAMLIT_STAGE TO ROLE GRIDIRON_APP_OWNER;
 PUT file://snowflake/streamlit/streamlit_app.py @APP.STREAMLIT_STAGE/cheat_sheet AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
 PUT file://snowflake/streamlit/data_access.py @APP.STREAMLIT_STAGE/cheat_sheet AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
 PUT file://snowflake/streamlit/environment.yml @APP.STREAMLIT_STAGE/cheat_sheet AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
--- Tiering helper shared with the Databricks score task (standard library only).
+-- Standard-library helpers from the package: tiers (shared with the Databricks score task)
+-- and the player search.
 PUT file://src/gridiron/tiers.py @APP.STREAMLIT_STAGE/cheat_sheet AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
 PUT file://src/gridiron/player_search.py @APP.STREAMLIT_STAGE/cheat_sheet AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
 
