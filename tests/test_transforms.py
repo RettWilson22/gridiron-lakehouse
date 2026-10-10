@@ -5,7 +5,7 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 import pytest
-from pyspark.sql import DataFrame
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 from gridiron import quality, transforms
@@ -44,11 +44,12 @@ def test_silver_player_stats_contract(silver: dict[str, DataFrame]) -> None:
         assert types[target] == spark_type, name
 
 
-def test_relocated_teams_use_current_codes() -> None:
-    frame = pd.DataFrame({"team": ["OAK", "DET", None]})
-    assert set(transforms.TEAM_ALIASES) == {"OAK", "SD", "STL"}
-    # Applied through Spark in silver; the mapping itself is a plain dict.
-    assert [transforms.TEAM_ALIASES.get(t, t) for t in frame["team"]] == ["LV", "DET", None]
+def test_relocated_teams_use_current_codes(spark: SparkSession) -> None:
+    games = spark.createDataFrame(
+        [("OAK", "SD"), ("DET", "STL"), (None, "GB")], "home string, away string"
+    )
+    normalized = transforms.normalize_teams(games, "home", "away").collect()
+    assert [tuple(row) for row in normalized] == [("LV", "LAC"), ("DET", "LA"), (None, "GB")]
 
 
 def test_depth_charts_cover_both_formats_with_the_same_rank_meaning(
