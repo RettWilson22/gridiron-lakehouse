@@ -96,6 +96,17 @@ def test_team_and_position_words_filter_instead_of_matching_names() -> None:
     assert names("detroit williams") == ["Jameson Williams"]
 
 
+def test_a_team_word_in_a_name_still_finds_the_player() -> None:
+    players = [
+        *PLAYERS,
+        Player("13", "Dallas Goedert", "TE", "PHI"),
+        Player("14", "Parker Washington", "WR", "JAX"),
+    ]
+    assert [m.player.name for m in search(players, "Dallas Goedert")] == ["Dallas Goedert"]
+    assert [m.player.name for m in search(players, "parker washington")] == ["Parker Washington"]
+    assert [m.player.name for m in search(players, "goedert eagles")] == ["Dallas Goedert"]
+
+
 def test_ambiguous_team_codes_only_filter_on_their_own() -> None:
     assert names("no") == ["Chris Olave"]
     assert parse_query("no brown").teams == frozenset()

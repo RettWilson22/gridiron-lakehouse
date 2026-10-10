@@ -160,17 +160,17 @@ def index_letter(name: str) -> str:
     return surname[:1].upper() if surname[:1].isalpha() else "#"
 
 
-def parse_query(raw: str) -> Query:
+def parse_query(raw: str, find_teams: bool = True) -> Query:
     """Pull team and position words out of the query; what remains is the name.
 
     Reads at most ``MAX_QUERY_CHARS`` characters and keeps at most ``MAX_NAME_TERMS``
-    name words.
+    name words. With ``find_teams=False`` team words stay in the name.
     """
     text = normalize(raw[:MAX_QUERY_CHARS])
     teams: set[str] = set()
     for code, words in TEAMS.items():
         for word in sorted(words, key=len, reverse=True):
-            if re.search(rf"\b{re.escape(word)}\b", text):
+            if find_teams and re.search(rf"\b{re.escape(word)}\b", text):
                 teams.add(code)
                 text = re.sub(rf"\b{re.escape(word)}\b", " ", text)
     tokens = text.split()
@@ -179,7 +179,7 @@ def parse_query(raw: str) -> Query:
     only_token = len(tokens) == 1 and not teams and not positions
     for token in list(tokens):
         code = token.upper()
-        if code in TEAMS and (code not in AMBIGUOUS_CODES or only_token):
+        if find_teams and code in TEAMS and (code not in AMBIGUOUS_CODES or only_token):
             teams.add(code)
             tokens.remove(token)
     return Query(tuple(tokens[:MAX_NAME_TERMS]), frozenset(teams), frozenset(positions))
@@ -218,6 +218,19 @@ def score_name(name: str, terms: tuple[str, ...]) -> tuple[float, str] | None:  
     return None
 
 
+def _matches(players: Iterable[Player], query: Query) -> list[Match]:
+    matches = []
+    for player in players:
+        if query.teams and player.team not in query.teams:
+            continue
+        if query.positions and player.position not in query.positions:
+            continue
+        scored = score_name(player.name, query.terms)
+        if scored is not None:
+            matches.append(Match(player, *scored))
+    return matches
+
+
 def search(
     players: Iterable[Player],
     raw_query: str,
@@ -228,16 +241,12 @@ def search(
     query = parse_query(raw_query)
     if query.is_empty:
         return []
+    players = list(players)
+    matches = _matches(players, query)
+    if not matches and query.teams:
+        # Some names contain team words: "Dallas Goedert", "Parker Washington".
+        matches = _matches(players, parse_query(raw_query, find_teams=False))
     relevance = relevance or {}
-    matches = []
-    for player in players:
-        if query.teams and player.team not in query.teams:
-            continue
-        if query.positions and player.position not in query.positions:
-            continue
-        scored = score_name(player.name, query.terms)
-        if scored is not None:
-            matches.append(Match(player, *scored))
     matches.sort(key=lambda m: (-m.score, -relevance.get(m.player.player_id, 0.0), m.player.name))
     return matches[:limit] if limit else matches
 
