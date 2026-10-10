@@ -33,6 +33,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from http import HTTPStatus
 from pathlib import Path
 from typing import BinaryIO
 
@@ -41,6 +42,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from gridiron.config import POSITIONS
 from gridiron.datasets import (
     DATASETS,
     ECR_COLUMNS,
@@ -52,7 +54,6 @@ log = logging.getLogger(__name__)
 
 Fetcher = Callable[[str], BinaryIO]
 _CHUNK = 1 << 20
-NOT_FOUND = 404
 
 
 @dataclass(frozen=True)
@@ -70,7 +71,8 @@ class IngestResult:
 
 def _default_fetch(url: str) -> BinaryIO:
     request = urllib.request.Request(url, headers={"User-Agent": "gridiron-lakehouse"})
-    return urllib.request.urlopen(request, timeout=300)  # type: ignore[no-any-return]
+    response: BinaryIO = urllib.request.urlopen(request, timeout=300)
+    return response
 
 
 def season_of_date(day: dt.date) -> int:
@@ -202,7 +204,7 @@ def split_ecr(table: pa.Table) -> dict[int, pa.Table]:
     weekly = table.filter(
         pc.and_(
             pc.equal(table["ecr_type"], ECR_TYPE_WEEKLY_POSITIONAL),
-            pc.is_in(table["pos"], pa.array(["QB", "RB", "WR", "TE"])),
+            pc.is_in(table["pos"], pa.array(POSITIONS)),
         )
     ).select(list(ECR_COLUMNS))
     weekly = weekly.cast(pa.schema([(c, pa.string()) for c in ECR_COLUMNS]))
@@ -251,10 +253,6 @@ def land_ecr(
     return results
 
 
-def _is_not_found(error: BaseException) -> bool:
-    return isinstance(error, urllib.error.HTTPError) and error.code == NOT_FOUND
-
-
 def ingest_dataset(
     dataset: Dataset,
     seasons: Iterable[int],
@@ -274,7 +272,7 @@ def ingest_dataset(
             results.append(download_and_land(dataset, season, landing_root, fetch))
         except urllib.error.HTTPError as error:
             # Early in a new season some files are not published yet; that is expected.
-            if season == current and _is_not_found(error):
+            if season == current and error.code == HTTPStatus.NOT_FOUND:
                 results.append(IngestResult(dataset.name, season, "not_published"))
             else:
                 raise
