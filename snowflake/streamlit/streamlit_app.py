@@ -460,7 +460,7 @@ def scope_order(scope: str) -> tuple[int, str]:
 
 
 def headline_numbers() -> dict[str, str]:
-    """The backtest in three numbers, from the pooled backtest scope."""
+    """Pooled backtest headline: player-weeks, and how much the model cuts last-3's error."""
     summary = run("select * from marts.mart_backtest_summary")
     if summary.empty:
         return {}
@@ -623,7 +623,7 @@ def render_player_card(player: pd.Series) -> None:
         html.escape(str(player[c])) for c in ("player_name", "position", "team")
     )
     this_week = everyone[everyone["player_id"] == player["player_id"]]
-    with st.container(key="player_card"):  # the profile box
+    with st.container(key="player_card"):
         st.markdown(  # raw HTML for the card's styling, so every value is HTML-escaped
             f'<p class="gl-card-name">{name}</p><p class="gl-card-meta">{position}, {team}</p>',
             unsafe_allow_html=True,
@@ -769,7 +769,7 @@ def player_index_section() -> None:
             selection_mode="single-row",
             key=f"index_table_{query.strip().lower()}_{len(table)}",
         )
-        rows = index_event.selection.rows if index_event is not None else []
+        rows = index_event.selection.rows
         if rows:
             render_player_card(listing.iloc[rows[0]])
         elif clear_winner:
