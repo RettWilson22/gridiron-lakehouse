@@ -22,7 +22,7 @@ import pandas as pd
 import sklearn
 from mlflow.exceptions import MlflowException
 from mlflow.models import infer_signature
-from mlflow.pyfunc import PythonModel  # type: ignore[attr-defined]  # not re-exported
+from mlflow.pyfunc.model import PythonModel
 
 import gridiron
 from gridiron.features import FEATURES
