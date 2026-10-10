@@ -602,7 +602,7 @@ def player_week(
         "team",
         F.coalesce("opponent", "opponent_team").alias("opponent"),
         "is_home",
-        F.col("fantasy_points_ppr").alias("fantasy_points_ppr"),
+        "fantasy_points_ppr",
         ((F.col("fantasy_points_ppr") + F.col("fantasy_points")) / 2).alias("fantasy_points_half"),
         F.col("fantasy_points").alias("fantasy_points_std"),
         "completions",
