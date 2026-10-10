@@ -4,9 +4,6 @@ Weekly fantasy football projections, built and backtested on Databricks and serv
 Snowflake.
 
 [![CI](https://github.com/RettWilson22/gridiron-lakehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/RettWilson22/gridiron-lakehouse/actions/workflows/ci.yml)
-[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](pyproject.toml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Live demo](https://img.shields.io/badge/live%20demo-streamlit-ff4b4b.svg)](https://gridiron-lakehouse.streamlit.app)
 
 ![A short tour of the app: the cheat sheet, a player index search for "cmc" and "lions wr", start/sit, risers and the track record](docs/images/demo.gif)
 
@@ -45,22 +42,22 @@ per-season results and caveats: [docs/methodology.md](docs/methodology.md).
 
 ## What this demonstrates
 
-* **A Databricks-to-Snowflake handoff.** Databricks publishes six serving tables; a
+* A Databricks-to-Snowflake handoff: Databricks publishes six serving tables; a
   MERGE-based sync writes only the rows that changed into Snowflake, where a stream and
   task keep a projected-vs-actual scorecard current incrementally.
-* **Leak-free features, with tests that try to break them.** Every feature uses only
+* Leak-free features, with tests that try to break them: every feature uses only
   information from before kickoff. The tests scramble or drop future results, other weeks'
   injury reports and depth charts, and later weeks' rosters, and check that a week's
   features do not change.
-* **Evaluation against real benchmarks.** A walk-forward backtest (each season projected by
+* Evaluation against real benchmarks: a walk-forward backtest (each season projected by
   a model trained only on earlier seasons) against two simple baselines and FantasyPros
   expert rankings, rebuilt in dbt SQL and reconciled with the Python numbers by a test.
-* **Everything as code.** A Databricks Asset Bundle (job, Lakeflow pipeline, schemas,
+* Everything as code: a Databricks Asset Bundle (job, Lakeflow pipeline, schemas,
   volume); Snowflake SQL for the warehouse, cost monitor, roles, UDF, stream, task and app;
   DDL generated from the table contracts; a dbt project with Snowflake and DuckDB targets.
-* **CI on every push to main.** Ruff, strict mypy, a generated-SQL freshness check, a dbt build and
-  its tests on DuckDB fixtures, and 219 pytest tests, including the pipeline on local Spark
-  and headless tests of the Streamlit app.
+* CI on every push to main: Ruff, strict mypy, a generated-SQL freshness check, a dbt build
+  and its tests on DuckDB fixtures, and 220 pytest tests, including the pipeline on local
+  Spark and headless tests of the Streamlit app.
 
 ## Why both platforms?
 
@@ -159,21 +156,21 @@ The full flow on real data and the cloud deployment are in [docs/deploy.md](docs
 
 ## Key findings and limitations
 
-* **Iceberg interoperability does not work on Databricks Free Edition.** Its metastore cannot
+* Iceberg interoperability does not work on Databricks Free Edition. Its metastore cannot
   grant `EXTERNAL USE SCHEMA`, and its Iceberg REST endpoint vends no storage credentials
   for tables on default storage, so the MERGE sync is the production path. The Iceberg SQL
   is kept for workspaces with external storage ([details](docs/deploy.md#the-iceberg-path-workspaces-with-external-storage)).
-* **The backtest and live runs see different information.** Backtest features use closing
+* The backtest and live runs see different information. Backtest features use closing
   lines and final injury reports, which the Tuesday and Thursday live runs do not have yet
   for Sunday games. The expert benchmark is the latest FantasyPros scrape on or before the
   week's last game day, so it can include news a Tuesday projection lacks. The backtest
   retrains once a season; the live model retrains every run.
-* **Behind the experts on ranking.** The model has no news, beat reporting or view of
+* Behind the experts on ranking: the model has no news, beat reporting or view of
   coaching intent; from the injury report it uses only game status and practice
   participation.
-* **The public demo is a static snapshot.** It changes only when the snapshot is exported
+* The public demo is a static snapshot. It changes only when the snapshot is exported
   from Databricks again and committed.
-* **Scope.** Kickers and defenses are not modelled. Floors and ceilings come from PPR and
+* Kickers and defenses are not modelled. Floors and ceilings come from PPR and
   are scaled for other formats, and yardage bonuses applied to an average stat line
   understate their value (the app says so).
 
