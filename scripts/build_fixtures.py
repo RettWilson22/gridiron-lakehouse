@@ -26,6 +26,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from gridiron.config import POSITIONS
 from gridiron.serving import SERVING_TABLES
 from gridiron.transforms import PLAY_COLUMNS
 
@@ -104,7 +105,7 @@ def select_depth_charts(
             & depth["week"].isin(list(weeks))
             & (depth["formation"] == "Offense")
         ]
-    depth = depth[depth["team"].isin(teams) & depth["pos_abb"].isin(["QB", "RB", "WR", "TE"])]
+    depth = depth[depth["team"].isin(teams) & depth["pos_abb"].isin(POSITIONS)]
     unique = sorted(set(pd.to_datetime(depth["dt"], utc=True)))
     kickoffs = (
         pd.to_datetime(season_games["gameday"] + " " + season_games["gametime"])
@@ -164,7 +165,7 @@ def build_landing(landing_root: Path, out_root: Path) -> None:
     players = pd.read_parquet(latest_file(landing_root / "players"))
     players = players[
         (players["gsis_id"].isin(player_ids) | players["pfr_id"].isin(pfr_ids))
-        & players["position_group"].isin(["QB", "RB", "WR", "TE"])
+        & players["position_group"].isin(POSITIONS)
     ]
     write(players, latest_file(landing_root / "players"), out_root, landing_root)
     crosswalk = pd.read_parquet(latest_file(landing_root / "player_ids"))
