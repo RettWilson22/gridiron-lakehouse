@@ -140,6 +140,17 @@ into `GRIDIRON.SYNCED`, touching only rows that changed and deleting rows that d
 so the streams on `SYNCED.PLAYER_WEEK` and `SYNCED.PROJECTIONS` see real changes only. A
 new `generated_at` on its own does not count as a change.
 
+The sync refuses to mirror a source that looks broken: if a table comes back empty, or the
+delete would remove more than a fifth of its rows, it rolls that table back and stops,
+because the streams would carry the deletes on into `APP.PROJECTION_RESULTS`. `risers` is
+exempt (it is empty in the offseason). When a big shrink is expected, for example after
+changing the backtest's test seasons, rerun that table with `--allow-shrink`:
+
+```bash
+set -a && . ./.env && set +a
+.venv/bin/python scripts/sync_to_snowflake.py --tables backtest_metrics --allow-shrink
+```
+
 ### 3.4 Scoring UDF, dbt, stream and task, app
 
 ```bash
