@@ -100,11 +100,17 @@ def test_a_team_word_in_a_name_still_finds_the_player() -> None:
     players = [
         *PLAYERS,
         Player("13", "Dallas Goedert", "TE", "PHI"),
-        Player("14", "Parker Washington", "WR", "JAX"),
+        Player("14", "Casey Washington", "WR", "ATL"),
+        Player("15", "Chase Edmonds", "RB", "WAS"),  # a close spelling of "casey"
     ]
-    assert [m.player.name for m in search(players, "Dallas Goedert")] == ["Dallas Goedert"]
-    assert [m.player.name for m in search(players, "parker washington")] == ["Parker Washington"]
-    assert [m.player.name for m in search(players, "goedert eagles")] == ["Dallas Goedert"]
+
+    def found(query: str) -> list[str]:
+        return [m.player.name for m in search(players, query)]
+
+    assert found("Dallas Goedert") == ["Dallas Goedert"]
+    assert found("casey washington") == ["Casey Washington"]
+    assert found("goedert eagles") == ["Dallas Goedert"]
+    assert found("washington rb") == ["Chase Edmonds"]
 
 
 def test_ambiguous_team_codes_only_filter_on_their_own() -> None:

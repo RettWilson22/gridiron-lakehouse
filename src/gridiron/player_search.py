@@ -243,9 +243,13 @@ def search(
         return []
     players = list(players)
     matches = _matches(players, query)
-    if not matches and query.teams:
-        # Some names contain team words: "Dallas Goedert", "Parker Washington".
-        matches = _matches(players, parse_query(raw_query, find_teams=False))
+    if query.teams and query.terms:
+        # A team word can also be part of a name ("Dallas Goedert", "Casey Washington"):
+        # keep whichever reading of the query finds the better match.
+        as_name = _matches(players, parse_query(raw_query, find_teams=False))
+        best = max((m.score for m in matches), default=0.0)
+        if any(m.score > best for m in as_name):
+            matches = as_name
     relevance = relevance or {}
     matches.sort(key=lambda m: (-m.score, -relevance.get(m.player.player_id, 0.0), m.player.name))
     return matches[:limit] if limit else matches
