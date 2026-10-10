@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import argparse
-import sys
 import tempfile
 from pathlib import Path
 
@@ -129,13 +128,6 @@ def run_task(argv: list[str] | None = None) -> str | None:
     return f"models:/{name}@{registry.CHAMPION_ALIAS}"
 
 
-def main(argv: list[str] | None = None) -> int:
-    run_task(argv)
-    return 0
-
-
 if __name__ == "__main__":
-    # Databricks reports any SystemExit as a failed task, even exit code 0, so only exit
-    # explicitly on failure.
-    if (code := main()) != 0:
-        sys.exit(code)
+    # No sys.exit: Databricks reports any SystemExit as a failed task, even exit code 0.
+    run_task()

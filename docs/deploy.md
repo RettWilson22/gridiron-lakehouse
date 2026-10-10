@@ -57,8 +57,8 @@ Two deployment details:
   `dist/*.whl`, because serverless compute cannot install an editable package from
   workspace files. A wheel left over from an older build would be installed too, so
   `make bundle-deploy` clears `dist/` first.
-* Job entry points call `sys.exit` only on failure: Databricks treats any `SystemExit`,
-  even code 0, as a failed task.
+* Job entry points never call `sys.exit` and fail by raising: Databricks treats any
+  `SystemExit`, even code 0, as a failed task.
 
 After the first run, check the pipeline graph and its expectation metrics, the MLflow
 experiment `/Users/<you>/gridiron-fantasy`, the registered model

@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 import argparse
-import sys
 
 import mlflow
 import pandas as pd
@@ -39,7 +38,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     spark = SparkSession.builder.getOrCreate()
     spark.conf.set("spark.sql.session.timeZone", "UTC")
@@ -75,11 +74,8 @@ def main(argv: list[str] | None = None) -> int:
     for name, frame in outputs.items():
         write_table(spark, frame, table(name))
         print(f"wrote {table(name)}: {len(frame)} rows")
-    return 0
 
 
 if __name__ == "__main__":
-    # Databricks reports any SystemExit as a failed task, even exit code 0, so only exit
-    # explicitly on failure.
-    if (code := main()) != 0:
-        sys.exit(code)
+    # No sys.exit: Databricks reports any SystemExit as a failed task, even exit code 0.
+    main()

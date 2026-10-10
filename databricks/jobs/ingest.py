@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import sys
 from pathlib import Path
 
 from gridiron.config import FIRST_SEASON, current_season
@@ -30,7 +29,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = parse_args(argv)
     current = current_season()
@@ -38,11 +37,8 @@ def main(argv: list[str] | None = None) -> int:
     results = ingest(args.datasets, range(args.first_season, last + 1), args.landing_root, current)
     for result in results:
         print(result.describe())
-    return 0
 
 
 if __name__ == "__main__":
-    # Databricks reports any SystemExit as a failed task, even exit code 0, so only exit
-    # explicitly on failure.
-    if (code := main()) != 0:
-        sys.exit(code)
+    # No sys.exit: Databricks reports any SystemExit as a failed task, even exit code 0.
+    main()
