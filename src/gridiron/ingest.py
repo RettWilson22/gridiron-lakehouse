@@ -29,6 +29,7 @@ import logging
 import os
 import shutil
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterable
@@ -54,6 +55,9 @@ log = logging.getLogger(__name__)
 
 Fetcher = Callable[[str], BinaryIO]
 _CHUNK = 1 << 20
+# GitHub release downloads fail now and then with a 5xx or a dropped connection.
+FETCH_ATTEMPTS = 4
+FETCH_BACKOFF_SECONDS = 5.0
 
 
 @dataclass(frozen=True)
@@ -70,9 +74,24 @@ class IngestResult:
 
 
 def _default_fetch(url: str) -> BinaryIO:
+    """Open ``url``, retrying server errors and network failures with exponential backoff."""
     request = urllib.request.Request(url, headers={"User-Agent": "gridiron-lakehouse"})
-    response: BinaryIO = urllib.request.urlopen(request, timeout=300)
-    return response
+    attempt = 1
+    while True:
+        try:
+            response: BinaryIO = urllib.request.urlopen(request, timeout=300)
+            return response
+        except urllib.error.URLError as error:
+            client_error = (
+                isinstance(error, urllib.error.HTTPError)
+                and error.code < HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+            if client_error or attempt == FETCH_ATTEMPTS:
+                raise
+            delay = FETCH_BACKOFF_SECONDS * 2 ** (attempt - 1)
+            log.warning("%s failed (%s); retrying in %.0f s", url, error, delay)
+            time.sleep(delay)
+            attempt += 1
 
 
 def season_of_date(day: dt.date) -> int:

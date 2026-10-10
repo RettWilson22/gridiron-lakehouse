@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import datetime as dt
 import io
+import time
 import urllib.error
+import urllib.request
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pyarrow as pa
@@ -13,6 +16,8 @@ import pytest
 from gridiron.config import current_season
 from gridiron.datasets import DATASETS
 from gridiron.ingest import (
+    FETCH_ATTEMPTS,
+    _default_fetch,
     content_hash,
     download_and_land,
     ingest,
@@ -187,3 +192,60 @@ def test_optional_dataset_failure_is_tolerated_only_after_a_first_landing(
     remote.payloads.clear()
     results = ingest(["ecr"], [2025], tmp_path, current=2025, fetch=remote)
     assert [r.action for r in results] == ["failed"]
+
+
+class FlakyServer:
+    """Stands in for ``urlopen``: raises the queued errors in turn, then serves a body."""
+
+    def __init__(self, *errors: Exception) -> None:
+        self.errors = list(errors)
+        self.calls = 0
+
+    def __call__(self, request: Any, timeout: float) -> io.BytesIO:
+        self.calls += 1
+        if self.errors:
+            raise self.errors.pop(0)
+        return io.BytesIO(b"ok")
+
+
+def http_error(code: int) -> urllib.error.HTTPError:
+    return urllib.error.HTTPError("https://x.test", code, "error", None, None)  # type: ignore[arg-type]
+
+
+@pytest.fixture
+def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    delays: list[float] = []
+    monkeypatch.setattr(time, "sleep", delays.append)
+    return delays
+
+
+def test_fetch_retries_server_errors_and_dropped_connections(
+    monkeypatch: pytest.MonkeyPatch, sleeps: list[float]
+) -> None:
+    server = FlakyServer(http_error(503), urllib.error.URLError("connection reset"))
+    monkeypatch.setattr(urllib.request, "urlopen", server)
+    assert _default_fetch("https://x.test").read() == b"ok"
+    assert server.calls == 3
+    assert sleeps == [5.0, 10.0]
+
+
+def test_fetch_gives_up_after_the_last_attempt(
+    monkeypatch: pytest.MonkeyPatch, sleeps: list[float]
+) -> None:
+    server = FlakyServer(*(http_error(502) for _ in range(FETCH_ATTEMPTS)))
+    monkeypatch.setattr(urllib.request, "urlopen", server)
+    with pytest.raises(urllib.error.HTTPError):
+        _default_fetch("https://x.test")
+    assert server.calls == FETCH_ATTEMPTS
+    assert len(sleeps) == FETCH_ATTEMPTS - 1
+
+
+def test_fetch_does_not_retry_a_missing_file(
+    monkeypatch: pytest.MonkeyPatch, sleeps: list[float]
+) -> None:
+    server = FlakyServer(http_error(404))
+    monkeypatch.setattr(urllib.request, "urlopen", server)
+    with pytest.raises(urllib.error.HTTPError):
+        _default_fetch("https://x.test")
+    assert server.calls == 1
+    assert sleeps == []
