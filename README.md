@@ -40,7 +40,7 @@ its own model, so its numbers differ by at most 0.026 MAE, 0.010 rank correlatio
 points of coverage. The intervals are not in the app. Method,
 per-season results and caveats: [docs/methodology.md](docs/methodology.md).
 
-## What this demonstrates
+## What's in it
 
 * A Databricks-to-Snowflake handoff: Databricks publishes six serving tables; a
   MERGE-based sync writes only the rows that changed into Snowflake, where a stream and
