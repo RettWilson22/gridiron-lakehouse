@@ -136,13 +136,12 @@ def initials(name: str) -> set[str]:
     kw, kw3, kwiii; "A.J. Brown" -> ajb; first + last initial for everyone."""
     tokens = name_tokens(name)
     core = _without_suffix(tokens)
-    found = {"".join(t[0] for t in core)}
+    base = "".join(t[0] for t in core)
+    found = {base}
     if len(core) >= 2:
         found.add(core[0][0] + core[-1][0])
-    suffix = [t for t in tokens if t in SUFFIXES]
-    for s in suffix:
-        base = "".join(t[0] for t in core)
-        found |= {base + s, base + ROMAN.get(s, s[0])}
+    for suffix in (t for t in tokens if t in SUFFIXES):
+        found |= {base + suffix, base + ROMAN.get(suffix, suffix[0])}
     return {f for f in found if len(f) >= 2}
 
 
