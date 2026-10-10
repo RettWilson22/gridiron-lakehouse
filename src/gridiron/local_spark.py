@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -13,6 +14,9 @@ def local_session(
     shuffle_partitions: int = 4,
     warehouse_dir: Path | None = None,
 ) -> SparkSession:
+    # Python workers must run the driver's interpreter, not whatever python3 is first on
+    # PATH. A session started from Python reads this variable, not spark.pyspark.python.
+    os.environ["PYSPARK_PYTHON"] = sys.executable
     builder = (
         SparkSession.builder.master("local[*]")
         .appName(app_name)
@@ -21,9 +25,6 @@ def local_session(
         .config("spark.ui.enabled", "false")
         .config("spark.ui.showConsoleProgress", "false")
         .config("spark.driver.memory", "4g")
-        # Python workers must run the driver's interpreter, not whatever is first on PATH.
-        .config("spark.pyspark.python", sys.executable)
-        .config("spark.pyspark.driver.python", sys.executable)
         # Databricks enables Arrow for pandas <-> Spark conversion by default; match it.
         .config("spark.sql.execution.arrow.pyspark.enabled", "true")
     )
