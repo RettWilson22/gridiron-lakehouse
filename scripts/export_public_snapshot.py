@@ -31,8 +31,10 @@ from pathlib import Path
 from types import ModuleType
 
 import duckdb
+import pyarrow.parquet as pq
 
-from gridiron.serving import SERVING_TABLES
+from gridiron.serving import SERVING_TABLES, qualified
+from gridiron.sync_config import SyncConfig
 
 ROOT = Path(__file__).resolve().parent.parent
 DBT_DIR = ROOT / "snowflake" / "dbt"
@@ -201,11 +203,7 @@ BLANKED_COLUMNS: dict[str, dict[str, str]] = {"mart_cheat_sheet": {"ecr_rank": "
 
 def download_from_databricks(out_dir: Path) -> None:
     """Fetch the serving tables through a Databricks SQL warehouse (see ``make sync``)."""
-    import pyarrow.parquet as pq  # noqa: PLC0415
     from databricks import sql as databricks_sql  # noqa: PLC0415 - "sync" extra
-
-    from gridiron.serving import qualified  # noqa: PLC0415
-    from gridiron.sync_config import SyncConfig  # noqa: PLC0415
 
     config = SyncConfig.from_env(os.environ)
     with databricks_sql.connect(**config.databricks_connect_kwargs()) as connection:
