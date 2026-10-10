@@ -818,8 +818,9 @@ def start_sit_section() -> None:
             advice = plain(row["advice"])
             if row["advice"] == "Sit":
                 advice = f":red[{advice}]"
+            tier = "" if pd.isna(row["tier"]) else f" | tier {int(row['tier'])}"
             st.caption(
-                f"{plain(row['position'])}{row['rank']} | tier {row['tier']} | {advice}\n\n"
+                f"{plain(row['position'])}{row['rank']}{tier} | {advice}\n\n"
                 f"{plain(row['matchup'])}, team total {row['implied_points']:.1f}\n\n"
                 f"Range {fmt_range(row['floor'], row['ceiling'])}"
                 + (f"\n\nInjury: :red[{plain(injury)}]" if injury != "None" else "")

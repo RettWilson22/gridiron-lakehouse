@@ -17,6 +17,8 @@ import pytest
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
+from gridiron.config import POSITIONS
+
 ROOT = Path(__file__).parent.parent
 APP = ROOT / "snowflake" / "streamlit" / "streamlit_app.py"
 PUBLIC_APP = ROOT / "streamlit_public" / "streamlit_app.py"
@@ -164,6 +166,18 @@ def test_start_sit_and_other_sections(app: AppTest) -> None:
     app.selectbox(key="scope").set_value(app.selectbox(key="scope").options[-1]).run()
     app.radio(key="record_position").set_value("TE").run()
     assert not app.exception
+
+
+def test_start_sit_shows_a_tier_only_for_tiered_players(app: AppTest) -> None:
+    open_section(app, "Start / Sit")
+    compare = app.multiselect(key="compare")
+    # Options are in projection order: the best player is tier 1, the worst is outside the pool.
+    compare.set_value([compare.options[0], compare.options[-1]]).run()
+    assert not app.exception
+    lines = [c.value.split("\n\n")[0] for c in app.caption if c.value[:2] in POSITIONS]
+    assert len(lines) == 2
+    assert "| tier 1 |" in lines[0]
+    assert "tier" not in lines[1]
 
 
 def card_names(app: AppTest) -> list[str]:
