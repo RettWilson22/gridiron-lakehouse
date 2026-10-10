@@ -37,11 +37,6 @@ OLD_DEPTH_POSITIONS = {"QB": "QB", "RB": "RB", "HB": "RB", "WR": "WR", "TE": "TE
 TEAM_ALIASES = {"OAK": "LV", "SD": "LAC", "STL": "LA"}
 
 
-# ---------------------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------------------
-
-
 def with_ingest_metadata(raw: DataFrame) -> DataFrame:
     """Attach file-level lineage from the hidden ``_metadata`` column of file sources.
 
@@ -112,10 +107,6 @@ def normalize_teams(df: DataFrame, *columns: str) -> DataFrame:
 def _sum(condition: Column) -> Column:
     return F.sum(F.when(condition, 1).otherwise(0))
 
-
-# ---------------------------------------------------------------------------------------
-# Silver
-# ---------------------------------------------------------------------------------------
 
 PLAY_COLUMNS: dict[str, str] = {
     "game_id": "string",
@@ -469,11 +460,6 @@ def silver_ecr(bronze: DataFrame, schedules: DataFrame, player_ids: DataFrame) -
         .withColumn("ecr_rank", F.row_number().over(positional))
         .join(player_ids, "fantasypros_id", "left")
     )
-
-
-# ---------------------------------------------------------------------------------------
-# Gold
-# ---------------------------------------------------------------------------------------
 
 
 def team_games(schedules: DataFrame) -> DataFrame:

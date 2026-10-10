@@ -70,9 +70,6 @@ def _read(name: str) -> DataFrame:
     return spark.read.table(name)
 
 
-# Silver --------------------------------------------------------------------------------
-
-
 @dp.materialized_view(
     name="plays",
     comment="Play-by-play columns used for red-zone and team volume; newest file per season.",
@@ -182,9 +179,6 @@ def player_ids() -> DataFrame:
 @_rules("ecr")
 def ecr() -> DataFrame:
     return transforms.silver_ecr(_read("bronze_ecr"), _read("schedules"), _read("player_ids"))
-
-
-# Gold ----------------------------------------------------------------------------------
 
 
 @dp.materialized_view(

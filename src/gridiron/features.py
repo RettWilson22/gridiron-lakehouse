@@ -115,11 +115,6 @@ def _asof(left: pd.DataFrame, right: pd.DataFrame, by: list[str]) -> pd.DataFram
     return merged.drop(columns=TIME)
 
 
-# ---------------------------------------------------------------------------------------
-# Candidates
-# ---------------------------------------------------------------------------------------
-
-
 def team_game_index(team_week: pd.DataFrame) -> pd.DataFrame:
     """Order of each team's regular-season games within a season (0 = first game)."""
     games = team_week[["season", "week", "team", "game_id"]].sort_values(["team", "season", "week"])
@@ -259,11 +254,6 @@ def build_candidates(
         "rookie_season",
     ]
     return pool[columns].sort_values(KEY).reset_index(drop=True)
-
-
-# ---------------------------------------------------------------------------------------
-# History states
-# ---------------------------------------------------------------------------------------
 
 
 def player_states(player_week: pd.DataFrame) -> pd.DataFrame:

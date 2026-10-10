@@ -382,8 +382,6 @@ def flag(value: object) -> str:
     return f"color: {BRICK}" if value not in ("", "Start", "Flex") else ""
 
 
-# Sidebar ---------------------------------------------------------------------------------
-
 weeks = run(
     "select season, week, max(cast(is_upcoming as int)) as upcoming, max(kind) as kind "
     "from marts.mart_cheat_sheet group by season, week order by week desc"
@@ -554,9 +552,6 @@ def as_players(frame: pd.DataFrame) -> list[Any]:
     ]
 
 
-# Cheat sheet -------------------------------------------------------------------------------
-
-
 def cheat_sheet_section() -> None:
     position = str(st.radio("Position", POSITIONS, horizontal=True, key="position"))
     sheet = position_sheet(position)
@@ -620,9 +615,6 @@ def cheat_sheet_section() -> None:
         )
         points = base.mark_circle(size=70, opacity=1).encode(x="proj:Q")
         show_chart((ranges + points).properties(height=22 * len(chart_rows)))
-
-
-# Player index ------------------------------------------------------------------------------
 
 
 def render_player_card(player: pd.Series) -> None:
@@ -784,9 +776,6 @@ def player_index_section() -> None:
             render_player_card(listing.iloc[0])
 
 
-# Start / Sit -----------------------------------------------------------------------------
-
-
 def start_sit_section() -> None:
     labels = {
         row.player_id: f"{row.player_name} ({row.position}, {row.team})"
@@ -861,9 +850,6 @@ def start_sit_section() -> None:
         )
 
 
-# Risers ----------------------------------------------------------------------------------
-
-
 def risers_section() -> None:
     st.caption(
         "Usage over each player's last three games against his earlier games this season "
@@ -914,9 +900,6 @@ def risers_section() -> None:
     )
     if movers["proj_ppr"].isna().any():
         st.caption("Blank projection: not projected this week (bye week or not expected to play).")
-
-
-# Track record ----------------------------------------------------------------------------
 
 
 def track_record_section() -> None:
