@@ -23,7 +23,7 @@ from typing import Final
 import numpy as np
 import pandas as pd
 
-from gridiron.config import POSITIONS
+from gridiron.config import POSITIONS, REGULAR_SEASON
 from gridiron.scoring import STATS
 
 TIME = "t"
@@ -124,7 +124,7 @@ def team_game_index(team_week: pd.DataFrame) -> pd.DataFrame:
 
 def injury_report(injuries: pd.DataFrame) -> pd.DataFrame:
     """Final regular-season injury report status per player-week (most severe if repeated)."""
-    report = injuries[injuries["game_type"] == "REG"].copy()
+    report = injuries[injuries["game_type"] == REGULAR_SEASON].copy()
     report["injury_level"] = report["report_status"].map(INJURY_LEVELS).fillna(0).astype("int64")
     report["practice_level"] = (
         report["practice_status"].map(PRACTICE_LEVELS).fillna(0).astype("int64")
@@ -161,7 +161,7 @@ def _recent_players(player_week: pd.DataFrame, order: pd.DataFrame) -> pd.DataFr
 
 def roster_positions(rosters: pd.DataFrame) -> pd.DataFrame:
     """Each player's listed position per regular-season week (fullbacks count as RB)."""
-    listed = rosters[rosters["game_type"] == "REG"][[*KEY, "position"]].dropna()
+    listed = rosters[rosters["game_type"] == REGULAR_SEASON][[*KEY, "position"]].dropna()
     listed = listed.assign(roster_position=listed["position"].map(ROSTER_POSITIONS))
     return listed.dropna(subset=["roster_position"]).drop_duplicates(KEY)[[*KEY, "roster_position"]]
 
