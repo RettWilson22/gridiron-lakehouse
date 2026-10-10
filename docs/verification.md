@@ -123,7 +123,7 @@ Apple Silicon, Python 3.12, Java 21, on 2026-10-08 and 2026-10-09, with the comm
   Murray, Jr." (a comma in the name).
 * **dbt**: `dbt build --target ci` passes 54 nodes on the fixtures; `make dbt-local` passes 55
   over the full local data, including the SQL-vs-Python reconciliation test.
-* **Checks**: `make check` (ruff, mypy strict, generated-SQL check, dbt CI build, 220 pytest
+* **Checks**: `make check` (ruff, mypy strict, generated-SQL check, dbt CI build, 223 pytest
   tests) passes; CI runs the same steps on every push to main and every pull request.
 * **App**: the Streamlit app's 14 headless tests (`tests/test_streamlit_app.py`) cover the
   local DuckDB mode and the public snapshot mode, including the league scoring form, the
