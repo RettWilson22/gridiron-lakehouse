@@ -97,22 +97,31 @@ h1, h2, h3, h4 { font-family: var(--gl-serif) !important; color: var(--gl-ink); 
   margin-left: calc(-1rem - 1px); }
 .st-key-section [role="radiogroup"] label { border-left: 1px solid var(--gl-rule);
   padding: 0.05rem 1rem; margin: 0; cursor: pointer; }
-.st-key-section [role="radiogroup"] label > div:first-child { display: none; }
+/* The radio dot is the label's first child in Streamlit 1.52 (Snowflake) and sits beside the
+   text in 1.65 (the public copy); hide it in both. */
+.st-key-section [role="radiogroup"] label > div:first-child,
+.st-key-section [role="radiogroup"] label div:has(+ [data-testid="stMarkdownContainer"]),
+.st-key-index_letter [role="radiogroup"] label > div:first-child,
+.st-key-index_letter [role="radiogroup"] label div:has(+ [data-testid="stMarkdownContainer"]) {
+  display: none; }
 .st-key-section [role="radiogroup"] label > div:last-child { padding-left: 0; }
 .st-key-section [role="radiogroup"] label p { font-size: 1.08rem; font-variant-caps: small-caps;
   letter-spacing: 0.05em; color: var(--gl-ink); text-underline-offset: 5px; }
 .st-key-section [role="radiogroup"] label:hover p { text-decoration: underline 1px var(--gl-rule); }
 .st-key-section [role="radiogroup"] label:has(input:checked) p { color: var(--gl-green);
   font-weight: 700; text-decoration: underline 2px var(--gl-green); }
-.st-key-section [role="radiogroup"] label:has(input:focus-visible) p,
-.st-key-index_letter [role="radiogroup"] label:has(input:focus-visible) p {
+/* Keyboard focus ring. In 1.65 the browser's :focus-visible also matches after a click, so
+   use the data-focus-visible flag react-aria sets for keyboard focus only. */
+.st-key-section [role="radiogroup"] label:not([data-rac]):has(input:focus-visible) p,
+.st-key-index_letter [role="radiogroup"] label:not([data-rac]):has(input:focus-visible) p,
+.st-key-section [role="radiogroup"] label[data-focus-visible] p,
+.st-key-index_letter [role="radiogroup"] label[data-focus-visible] p {
   outline: 2px solid var(--gl-green); outline-offset: 2px; }
 
 /* The A-Z player index reads like the index of a book: plain letters, current one underlined. */
 .st-key-index_letter [role="radiogroup"] { gap: 2px; flex-wrap: wrap; }
 .st-key-index_letter [role="radiogroup"] label { padding: 0.1rem 0.3rem; margin: 0;
   cursor: pointer; }
-.st-key-index_letter [role="radiogroup"] label > div:first-child { display: none; }
 .st-key-index_letter [role="radiogroup"] label > div:last-child { padding-left: 0; }
 .st-key-index_letter [role="radiogroup"] label p { font-size: 1.1rem; color: var(--gl-ink);
   text-underline-offset: 4px; }
@@ -145,18 +154,26 @@ h1, h2, h3, h4 { font-family: var(--gl-serif) !important; color: var(--gl-ink); 
 /* Tables open with a heavy rule, like a box score. */
 [data-testid="stDataFrame"] { border-top: 2px solid var(--gl-ink); }
 
-/* Toggles and chosen players as plain ink boxes, not app pills. */
-.stCheckbox label[data-baseweb="checkbox"] > div:first-child { background: transparent;
+/* Toggles and chosen players as plain ink boxes, not app pills. Each rule names the 1.52
+   (Snowflake) element first and the 1.65 (public copy) one second. */
+.stCheckbox label[data-baseweb="checkbox"] > div:first-child,
+.stCheckbox label > span + div { background: transparent;
   border: 1px solid var(--gl-ink); border-radius: 0; }
-.stCheckbox label[data-baseweb="checkbox"] > div:first-child > div { background: var(--gl-ink);
+.stCheckbox label[data-baseweb="checkbox"] > div:first-child > div,
+.stCheckbox label > span + div > div { background: var(--gl-ink);
   border-radius: 0; box-shadow: none; }
-.stCheckbox label:has(input:checked) > div:first-child { background: var(--gl-green);
+.stCheckbox label:has(input:checked) > div:first-child,
+.stCheckbox label:has(input:checked) > span + div { background: var(--gl-green);
   border-color: var(--gl-green); }
-.stCheckbox label:has(input:checked) > div:first-child > div { background: var(--gl-paper); }
-[data-testid="stMultiSelect"] [data-baseweb="tag"] { background: transparent;
+.stCheckbox label:has(input:checked) > div:first-child > div,
+.stCheckbox label:has(input:checked) > span + div > div { background: var(--gl-paper); }
+[data-testid="stMultiSelect"] [data-baseweb="tag"],
+[data-testid="stMultiSelect"] [data-tag] { background: transparent;
   border: 1px solid var(--gl-ink); border-radius: 0; color: var(--gl-ink); max-width: none; }
-[data-testid="stMultiSelect"] [data-baseweb="tag"] span { color: var(--gl-ink); max-width: none; }
-[data-testid="stMultiSelect"] [data-baseweb="tag"] svg { color: var(--gl-brick); }
+[data-testid="stMultiSelect"] [data-baseweb="tag"] span,
+[data-testid="stMultiSelect"] [data-tag] span { color: var(--gl-ink); max-width: none; }
+[data-testid="stMultiSelect"] [data-baseweb="tag"] svg,
+[data-testid="stMultiSelect"] [data-tag] svg { color: var(--gl-brick); }
 .stHorizontalBlock:has(.stMetric) [data-testid="stCaptionContainer"] p:not(:last-child) {
   margin-bottom: 0.2rem; }
 
