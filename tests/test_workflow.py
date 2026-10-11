@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import pandas as pd
 import pytest
 
 from gridiron.projections import PROJECTION_COLUMNS
 from gridiron.workflow import (
+    MIN_CANDIDATES_PER_TEAM,
     Prepared,
     backtest_intervals,
+    check_upcoming_pool,
     prepare,
     publish,
     run_backtest,
@@ -125,3 +129,34 @@ def test_preparing_the_upcoming_week_in_the_offseason_gives_no_rows(
     )
     assert offseason.upcoming is None
     assert offseason.frame.empty
+
+
+def test_the_fixture_pool_clears_the_floors(prepared: Prepared) -> None:
+    stats = check_upcoming_pool(prepared)
+    assert stats["candidates"] == len(upcoming_rows(prepared))
+    assert stats["fewest_per_team"] >= MIN_CANDIDATES_PER_TEAM
+    assert stats["depth_chart_coverage"] > 0.9
+
+
+def test_a_team_with_too_few_candidates_fails_the_check(prepared: Prepared) -> None:
+    upcoming = upcoming_rows(prepared)
+    thin = upcoming[upcoming["team"] == "DET"].index[MIN_CANDIDATES_PER_TEAM - 1 :]
+    dropped = dataclasses.replace(prepared, frame=prepared.frame.drop(thin))
+    with pytest.raises(ValueError, match="DET has 7 candidates"):
+        check_upcoming_pool(dropped)
+
+
+def test_a_team_with_no_candidates_fails_the_check(prepared: Prepared) -> None:
+    upcoming = upcoming_rows(prepared)
+    missing = upcoming[upcoming["team"] == "GB"].index
+    dropped = dataclasses.replace(prepared, frame=prepared.frame.drop(missing))
+    with pytest.raises(ValueError, match="GB has 0 candidates"):
+        check_upcoming_pool(dropped)
+
+
+def test_missing_depth_charts_fail_the_check(prepared: Prepared) -> None:
+    frame = prepared.frame.copy()
+    upcoming = upcoming_rows(prepared).index
+    frame.loc[upcoming[: len(upcoming) // 4], "on_depth_chart"] = 0
+    with pytest.raises(ValueError, match="on a depth chart"):
+        check_upcoming_pool(dataclasses.replace(prepared, frame=frame))

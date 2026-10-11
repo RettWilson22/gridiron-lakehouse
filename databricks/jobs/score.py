@@ -1,6 +1,8 @@
 """Job task: project the upcoming week and publish projections and risers.
 
 * loads the champion model from Unity Catalog (or ``--model-uri``);
+* fails when the upcoming week's candidate pool is too thin to trust
+  (``workflow.check_upcoming_pool``);
 * projects every candidate player for the upcoming week; projections for games that have
   already kicked off are never replaced, so the stored record is what was shown pre-game;
 * writes ``live_projections`` (the stored live history), ``projections`` (backtest weeks
@@ -19,7 +21,7 @@ from pyspark.sql import SparkSession
 from gridiron import joblog
 from gridiron.registry import CHAMPION_ALIAS, model_input, registered_name
 from gridiron.spark_io import read_table, write_table
-from gridiron.workflow import prepare, publish, score_live
+from gridiron.workflow import check_upcoming_pool, prepare, publish, score_live
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -58,6 +60,7 @@ def main(argv: list[str] | None = None) -> None:
     live = existing
     summary: dict[str, object] = {"upcoming": prepared.upcoming}
     if prepared.upcoming is not None:
+        summary |= check_upcoming_pool(prepared)
         if args.model_uri:
             uri, version = args.model_uri, args.model_uri
         else:

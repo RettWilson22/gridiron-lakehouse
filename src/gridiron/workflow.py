@@ -34,6 +34,12 @@ INPUT_TABLES: Final = (
     "ecr",
 )
 DEFAULT_TEST_SEASONS: Final = (2023, 2024, 2025)
+# Floors for the upcoming week's candidate pool. From 2018 through 2026 week 5, every
+# team-game had at least 9 candidates except 2022 week 1 Carolina (5, from a depth chart
+# with no receivers), and every week had at least 83% of its candidates on the depth chart
+# (94% or more since 2025). Below them an upstream file is probably missing or stale.
+MIN_CANDIDATES_PER_TEAM: Final = 8
+MIN_DEPTH_CHART_COVERAGE: Final = 0.8
 
 
 @dataclass
@@ -141,6 +147,36 @@ def upcoming_rows(prepared: Prepared) -> pd.DataFrame:
     season, week = prepared.upcoming
     frame = prepared.frame
     return frame[(frame["season"] == season) & (frame["week"] == week)]
+
+
+def check_upcoming_pool(prepared: Prepared) -> dict[str, float]:
+    """Size and depth chart coverage of the upcoming week's candidate pool. Raises when a
+    team has too few candidates or too few candidates are on a depth chart."""
+    if prepared.upcoming is None:
+        raise ValueError("no upcoming week to check")
+    season, week = prepared.upcoming
+    team_week = prepared.tables["team_week"]
+    playing = team_week.loc[(team_week["season"] == season) & (team_week["week"] == week), "team"]
+    rows = upcoming_rows(prepared)
+    per_team = rows.groupby("team").size().reindex(playing.unique(), fill_value=0)
+    coverage = float(rows["on_depth_chart"].mean()) if len(rows) else 0.0
+    problems = [
+        f"{team} has {count} candidates (floor {MIN_CANDIDATES_PER_TEAM})"
+        for team, count in per_team.items()
+        if count < MIN_CANDIDATES_PER_TEAM
+    ]
+    if coverage < MIN_DEPTH_CHART_COVERAGE:
+        problems.append(
+            f"{coverage:.0%} of candidates are on a depth chart "
+            f"(floor {MIN_DEPTH_CHART_COVERAGE:.0%})"
+        )
+    if problems:
+        raise ValueError(f"{season} week {week} candidate pool: " + "; ".join(problems))
+    return {
+        "candidates": len(rows),
+        "fewest_per_team": int(per_team.min()),
+        "depth_chart_coverage": round(coverage, 3),
+    }
 
 
 def score_live(
