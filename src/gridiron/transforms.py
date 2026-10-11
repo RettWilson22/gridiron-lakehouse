@@ -417,21 +417,23 @@ ECR_COLUMNS: dict[str, str] = {
 }
 
 
-def regular_season_weeks(schedules: DataFrame) -> DataFrame:
-    """First and last game day of every regular-season week."""
+def regular_season_sundays(schedules: DataFrame) -> DataFrame:
+    """The Sunday of every regular-season week (the day of its first Sunday game)."""
+    sunday = F.when(F.dayofweek("gameday") == 1, F.col("gameday"))
     return (
         schedules.where(F.col("game_type") == REGULAR_SEASON)
         .groupBy("season", "week")
-        .agg(F.min("gameday").alias("first_gameday"), F.max("gameday").alias("last_gameday"))
+        .agg(F.min(sunday).alias("sunday"))
     )
 
 
 def silver_ecr(bronze: DataFrame, schedules: DataFrame, player_ids: DataFrame) -> DataFrame:
     """FantasyPros weekly positional expert consensus rankings, mapped to NFL weeks.
 
-    A ranking scraped on a given date belongs to the first regular-season week whose last
-    game is on or after that date (rankings are scraped on Fridays, between Thursday and
-    Sunday games). When a week has several scrapes, the latest one is kept.
+    A ranking scraped on a given date belongs to the first regular-season week whose Sunday
+    games are still ahead (rankings are scraped on Fridays, between Thursday and Sunday
+    games). A scrape on or after a week's Sunday, which could reflect that week's results,
+    goes to the next week. When a week has several scrapes, the latest one is kept.
     """
     latest = latest_landed(bronze).select(
         typed("fantasypros_id", "bigint", "id"),
@@ -441,11 +443,11 @@ def silver_ecr(bronze: DataFrame, schedules: DataFrame, player_ids: DataFrame) -
         *(typed(n, ECR_COLUMNS[n]) for n in ("ecr", "sd", "best", "worst", "scrape_date")),
         F.col(PARTITION).cast("int").alias("season"),
     )
-    weeks = regular_season_weeks(schedules)
+    weeks = regular_season_sundays(schedules)
     dates = latest.select("season", "scrape_date").distinct()
     week_of = (
         dates.join(weeks, "season")
-        .where(F.col("last_gameday") >= F.col("scrape_date"))
+        .where(F.col("sunday") > F.col("scrape_date"))
         .groupBy("season", "scrape_date")
         .agg(F.min("week").alias("week"))
     )

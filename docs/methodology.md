@@ -294,9 +294,10 @@ correlation, are the same as before.
   the lines and injury reports available at the time; only the Saturday run has the final
   reports for those games. On this point the backtest overstates what a midweek projection
   knows.
-* **Expert timing.** The ECR benchmark for a week is the latest FantasyPros scrape on or
-  before the week's last game day (the pages are scraped on Fridays, after Thursday's game),
-  so ECR can include news a Tuesday projection does not have.
+* **Expert timing.** The ECR benchmark for a week is the latest FantasyPros scrape dated
+  before the week's Sunday games (the pages are scraped on Fridays, after Thursday's game),
+  so ECR can include news a Tuesday projection does not have. A scrape from the Sunday on
+  counts toward the next week, so rankings made after a week's games never stand in for it.
 * **Pool.** Scoring on FantasyPros' top N keeps the comparison fair across methods, but it
   scores only weeks with a ranking snapshot (none for week 1, week 18, or 2024 weeks 1-3)
   and leaves out players the experts did not rank highly.

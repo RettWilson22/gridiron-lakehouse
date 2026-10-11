@@ -13,7 +13,7 @@ Evaluation pool: for each position-week, the players FantasyPros ranked in the t
 of their position that week (``tiers.POOL``: two starters' worth per team in a 12-team
 1 QB / 2 RB / 3 WR / 1 TE league). The pool is defined by a pre-game source that is
 independent of every method being compared, and only weeks with a weekly ranking snapshot
-are scored (the latest scrape on or before the week's last game day). Within the pool, rows
+are scored (the latest scrape before the week's Sunday games). Within the pool, rows
 are scored when every method has a value (rookies before their first game have no
 baseline). A projected player without a stat row for the game scores zero, whether he sat
 out or played without recording a stat (``features.attach_actuals``).

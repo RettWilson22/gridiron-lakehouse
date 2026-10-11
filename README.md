@@ -162,9 +162,9 @@ The full flow on real data and the cloud deployment are in [docs/deploy.md](docs
   is kept for workspaces with external storage ([details](docs/deploy.md#the-iceberg-path-workspaces-with-external-storage)).
 * The backtest and live runs see different information. Backtest features use closing
   lines and final injury reports, which the Tuesday and Thursday live runs do not have yet
-  for Sunday games. The expert benchmark is the latest FantasyPros scrape on or before the
-  week's last game day, so it can include news a Tuesday projection lacks. The backtest
-  retrains once a season; the live model retrains every run.
+  for Sunday games. The expert benchmark is the latest FantasyPros scrape before the
+  week's Sunday games, usually Friday's, so it can include news a Tuesday projection lacks.
+  The backtest retrains once a season; the live model retrains every run.
 * Behind the experts on ranking: the model has no news, beat reporting or view of
   coaching intent; from the injury report it uses only game status and practice
   participation.

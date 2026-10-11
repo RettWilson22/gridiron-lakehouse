@@ -168,6 +168,30 @@ def test_ecr_maps_friday_rankings_to_the_week_being_played(tables: dict[str, pd.
     assert ecr["player_id"].notna().mean() > 0.95
 
 
+def test_ecr_never_uses_a_scrape_from_after_the_week_kicked_off(spark: SparkSession) -> None:
+    # 2020 week 5 ran Thursday to Monday, and a Monday scrape followed its Sunday games.
+    games = [("2020-10-08", 5), ("2020-10-11", 5), ("2020-10-12", 5), ("2020-10-18", 6)]
+    schedules = spark.createDataFrame(
+        [(2020, week, "REG", dt.date.fromisoformat(day)) for day, week in games],
+        "season int, week int, game_type string, gameday date",
+    )
+    scrapes = ["2020-10-08", "2020-10-12", "2020-10-16"]  # Thursday, Monday, Friday
+    landed = (dt.datetime(2026, 1, 1), "/landing/ecr/2020/fp_ecr_weekly_2020_0123456789ab.parquet")
+    bronze = spark.createDataFrame(
+        [("28013", "A", "WR", "DET", "1", "0", "1", "1", day, *landed) for day in scrapes],
+        "id string, player string, pos string, team string, ecr string, sd string, "
+        "best string, worst string, scrape_date string, _ingested_at timestamp, "
+        "_source_file string",
+    )
+    player_ids = spark.createDataFrame(
+        [(28013, "00-0000001")], "fantasypros_id bigint, player_id string"
+    )
+
+    ecr = transforms.silver_ecr(bronze, schedules, player_ids).toPandas()
+    used = dict(zip(ecr["week"], ecr["scrape_date"].astype(str), strict=True))
+    assert used == {5: "2020-10-08", 6: "2020-10-16"}
+
+
 def test_drop_rules_remove_rows_without_keys(silver: dict[str, DataFrame]) -> None:
     stats = silver["player_stats"]
     broken = stats.limit(3).withColumn("player_id", F.lit(None).cast("string"))
