@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
-from typing import Any, Final, TypeAlias
+from typing import Any, Final
 
 import numpy as np
 import pandas as pd
@@ -109,7 +109,7 @@ TARGET: Final = "fantasy_points_ppr"
 FINGERPRINT_COLUMNS: Final = (*KEY, "position", *FEATURES, *COMPONENTS, TARGET)
 
 # scikit-learn regressors (HistGradientBoostingRegressor or DummyRegressor); untyped.
-Estimator: TypeAlias = Any
+type Estimator = Any
 
 
 def fingerprint(*frames: pd.DataFrame) -> str:

@@ -9,7 +9,7 @@ description = "Fantasy football projections and weekly cheat sheet: Databricks f
 readme = "README.md"
 license = "MIT"
 authors = [{ name = "Rett Wilson" }]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 # Core dependencies are kept small and are all preinstalled on Databricks serverless.
 dependencies = [
     "numpy>=1.26",
@@ -37,8 +37,16 @@ packages = ["src/gridiron"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 extend-exclude = ["snowflake/dbt/target", "snowflake/dbt/dbt_packages"]
+
+[tool.ruff.per-file-target-version]
+# Files that run inside Snowflake, on Python 3.11: the scoring UDF and the Streamlit app
+# with the helpers uploaded next to it.
+"src/gridiron/scoring.py" = "py311"
+"src/gridiron/tiers.py" = "py311"
+"src/gridiron/player_search.py" = "py311"
+"snowflake/streamlit/*.py" = "py311"
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "RUF", "PL", "C4"]
