@@ -24,12 +24,13 @@ from mlflow.tracking import MlflowClient
 from pyspark.sql import SparkSession
 
 from gridiron import backtest as bt
-from gridiron import registry
+from gridiron import joblog, registry
 from gridiron.features import FEATURES
 from gridiron.model import HGB_PARAMS, ProjectionModel, fingerprint
 from gridiron.spark_io import read_table, write_table
 from gridiron.workflow import (
     DEFAULT_TEST_SEASONS,
+    Prepared,
     live_history,
     prepare,
     reused_versions,
@@ -59,6 +60,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def run_task(argv: list[str] | None = None) -> str | None:
     """Run the task. Returns the champion model's URI, or None if there is no upcoming week."""
     args = parse_args(argv)
+    joblog.setup()
     spark = SparkSession.builder.getOrCreate()
     spark.conf.set("spark.sql.session.timeZone", "UTC")
     now = pd.Timestamp.now(tz="UTC")
@@ -76,16 +78,28 @@ def run_task(argv: list[str] | None = None) -> str | None:
     backtest_projections, metrics = run_backtest(prepared, test_seasons, now, stored)
     write_table(spark, backtest_projections, table("backtest_projections"))
     write_table(spark, metrics, table("backtest_metrics"))
-    reused = reused_versions(stored, backtest_projections)
-    print(
-        f"backtest: {len(backtest_projections)} projections, "
-        f"{backtest_projections['model_version'].nunique()} seasons ({len(reused)} reused); "
-        f"upcoming {prepared.upcoming}"
-    )
-
+    summary: dict[str, object] = {
+        "backtest_projections": len(backtest_projections),
+        "backtest_seasons": backtest_projections["model_version"].nunique(),
+        "reused_seasons": len(reused_versions(stored, backtest_projections)),
+        "upcoming": prepared.upcoming,
+    }
     if prepared.upcoming is None:
-        print("no upcoming regular-season week; nothing to train for")
+        joblog.summary("train", **summary)
         return None
+    champion = train_champion(args, prepared, prepared.upcoming, metrics)
+    joblog.summary("train", **summary, **champion)
+    return f"models:/{champion['model']}@{registry.CHAMPION_ALIAS}"
+
+
+def train_champion(
+    args: argparse.Namespace,
+    prepared: Prepared,
+    upcoming: tuple[int, int],
+    metrics: pd.DataFrame,
+) -> dict[str, str]:
+    """Fit, log and register the live model as champion, unless the champion is already
+    trained on the same data. Returns what happened, for the task summary."""
     history = live_history(prepared)
     trained_on = fingerprint(history)
     mlflow.set_registry_uri(args.registry_uri)
@@ -93,12 +107,11 @@ def run_task(argv: list[str] | None = None) -> str | None:
     name = registry.registered_name(args.catalog, args.schema)
     champion = registry.champion_trained_on(client, name, trained_on)
     if champion is not None:
-        print(f"{name} v{champion.version} is already trained on this data ({trained_on[:12]})")
-        return f"models:/{name}@{registry.CHAMPION_ALIAS}"
+        return {"model": name, "version": str(champion.version), "action": "kept"}
 
     model = ProjectionModel.fit(history)
     mlflow.set_experiment(args.experiment)
-    season, week = prepared.upcoming
+    season, week = upcoming
     with mlflow.start_run(run_name=f"fantasy-projection-{season}-w{week:02d}") as run:
         mlflow.set_tag(registry.FINGERPRINT_TAG, trained_on)
         mlflow.log_params(
@@ -119,8 +132,7 @@ def run_task(argv: list[str] | None = None) -> str | None:
         info = registry.log_model(model, upcoming_rows(prepared), name)
         version = str(info.registered_model_version)
         registry.promote(client, name, version, trained_on)
-        print(f"run {run.info.run_id}: registered {name} v{version} as champion")
-    return f"models:/{name}@{registry.CHAMPION_ALIAS}"
+    return {"model": name, "version": version, "action": "registered", "run_id": run.info.run_id}
 
 
 if __name__ == "__main__":

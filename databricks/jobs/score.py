@@ -16,6 +16,7 @@ import pandas as pd
 from mlflow.tracking import MlflowClient
 from pyspark.sql import SparkSession
 
+from gridiron import joblog
 from gridiron.registry import CHAMPION_ALIAS, model_input, registered_name
 from gridiron.spark_io import read_table, write_table
 from gridiron.workflow import prepare, publish, score_live
@@ -40,6 +41,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
+    joblog.setup()
     spark = SparkSession.builder.getOrCreate()
     spark.conf.set("spark.sql.session.timeZone", "UTC")
     now = pd.Timestamp.now(tz="UTC")
@@ -54,6 +56,7 @@ def main(argv: list[str] | None = None) -> None:
         else None
     )
     live = existing
+    summary: dict[str, object] = {"upcoming": prepared.upcoming}
     if prepared.upcoming is not None:
         if args.model_uri:
             uri, version = args.model_uri, args.model_uri
@@ -62,6 +65,7 @@ def main(argv: list[str] | None = None) -> None:
             name = registered_name(args.catalog, args.schema)
             champion = MlflowClient().get_model_version_by_alias(name, CHAMPION_ALIAS)
             uri, version = f"models:/{name}@{CHAMPION_ALIAS}", f"{name} v{champion.version}"
+        summary["model"] = version
         model = mlflow.pyfunc.load_model(uri)
         live = score_live(
             prepared, lambda rows: model.predict(model_input(rows)), version, existing, now
@@ -73,7 +77,8 @@ def main(argv: list[str] | None = None) -> None:
         outputs["live_projections"] = live
     for name, frame in outputs.items():
         write_table(spark, frame, table(name))
-        print(f"wrote {table(name)}: {len(frame)} rows")
+        summary[f"{name}_rows"] = len(frame)
+    joblog.summary("score", **summary)
 
 
 if __name__ == "__main__":

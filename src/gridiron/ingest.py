@@ -67,11 +67,6 @@ class IngestResult:
     action: str  # "skipped", "unchanged", "written", "not_published" or "failed"
     path: Path | None = None
 
-    def describe(self) -> str:
-        where = f" {self.season}" if self.season is not None else ""
-        target = f" -> {self.path}" if self.path else ""
-        return f"{self.dataset}{where}: {self.action}{target}"
-
 
 def _default_fetch(url: str) -> BinaryIO:
     """Open ``url``, retrying server errors and network failures with exponential backoff."""

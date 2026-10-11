@@ -7,9 +7,10 @@ Runs unchanged on Databricks serverless (``--landing-root /Volumes/...``) and lo
 from __future__ import annotations
 
 import argparse
-import logging
+from collections import Counter
 from pathlib import Path
 
+from gridiron import joblog
 from gridiron.config import FIRST_SEASON, current_season
 from gridiron.datasets import DATASETS
 from gridiron.ingest import ingest
@@ -30,13 +31,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    joblog.setup()
     args = parse_args(argv)
     current = current_season()
     last = args.last_season or current
     results = ingest(args.datasets, range(args.first_season, last + 1), args.landing_root, current)
-    for result in results:
-        print(result.describe())
+    joblog.summary(
+        "ingest",
+        seasons=f"{args.first_season}-{last}",
+        **Counter(r.action for r in results),
+        failed_datasets=sorted(r.dataset for r in results if r.action == "failed"),
+    )
 
 
 if __name__ == "__main__":
