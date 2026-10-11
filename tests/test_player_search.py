@@ -113,6 +113,28 @@ def test_a_team_word_in_a_name_still_finds_the_player() -> None:
     assert found("washington rb") == ["Chase Edmonds"]
 
 
+@pytest.mark.parametrize(
+    ("query", "name_match", "team_player"),
+    [
+        ("jax", "Jaxon Smith-Njigba", "Travis Etienne"),
+        ("dal", "Dallas Goedert", "CeeDee Lamb"),
+        ("car", "Carson Steele", "Chuba Hubbard"),
+    ],
+)
+def test_a_lone_team_code_also_matches_the_start_of_a_name(
+    query: str, name_match: str, team_player: str
+) -> None:
+    players = [
+        *PLAYERS,
+        Player("13", "Travis Etienne", "RB", "JAX"),
+        Player("14", "Dallas Goedert", "TE", "PHI"),
+        Player("15", "CeeDee Lamb", "WR", "DAL"),
+        Player("16", "Carson Steele", "RB", "KC"),
+        Player("17", "Chuba Hubbard", "RB", "CAR"),
+    ]
+    assert [m.player.name for m in search(players, query)] == [name_match, team_player]
+
+
 def test_ambiguous_team_codes_only_filter_on_their_own() -> None:
     assert names("no") == ["Chris Olave"]
     assert parse_query("no brown").teams == frozenset()

@@ -3,7 +3,8 @@
 Matches the way people actually type player names: any case, accents and punctuation,
 last name first, partial names ("jeff"), initials ("jsn", "arsb", "kw3"), common nicknames
 ("cmc"), and small typos ("mccaffery"). Team and position words in the query filter the
-results instead of being matched against names, so "lions wr" lists Detroit's receivers.
+results instead of being matched against names, so "lions wr" lists Detroit's receivers; a
+team on its own also finds names that start with it ("jax").
 
 Standard library only: Streamlit in Snowflake imports this file directly from the app's
 stage, next to the app.
@@ -250,6 +251,14 @@ def search(
         best = max((m.score for m in matches), default=0.0)
         if any(m.score > best for m in as_name):
             matches = as_name
+    elif query.teams:
+        # A team alone can also start a name: "jax" lists Jaxon Smith-Njigba above the
+        # Jaguars. Close spellings stay out, so "bears" lists only Chicago.
+        by_id = {m.player.player_id: m for m in matches}
+        for match in _matches(players, parse_query(raw_query, find_teams=False)):
+            if match.score >= PREFIX:
+                by_id[match.player.player_id] = match
+        matches = list(by_id.values())
     relevance = relevance or {}
     matches.sort(key=lambda m: (-m.score, -relevance.get(m.player.player_id, 0.0), m.player.name))
     return matches[:limit] if limit else matches
