@@ -111,12 +111,7 @@ def run_task(argv: list[str] | None = None) -> str | None:
                 **{f"training_rows_{p}": n for p, n in model.training_rows.items()},
             }
         )
-        pooled = metrics[metrics["scope"] == bt.pooled_scope(metrics["scope"])]
-        for row in pooled.itertuples():
-            for metric in ("mae", "rmse", "spearman", "interval_coverage"):
-                value = getattr(row, metric)
-                if pd.notna(value):
-                    mlflow.log_metric(f"{row.position}_{row.method}_{metric}", float(value))
+        mlflow.log_metrics(bt.pooled_metrics(metrics))
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "backtest_metrics.csv"
             metrics.to_csv(path, index=False)

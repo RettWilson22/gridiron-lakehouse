@@ -148,6 +148,20 @@ def pooled_scope(scopes: Iterable[str]) -> str:
     return max(scopes, key=lambda scope: (len(scope), scope))
 
 
+def pooled_metrics(metrics: pd.DataFrame) -> dict[str, float]:
+    """The pooled scope's metrics as ``{"<position>_<method>_<metric>": value}`` for MLflow;
+    empty when nothing was scored (no test season had a ranking snapshot)."""
+    if metrics.empty:
+        return {}
+    pooled = metrics[metrics["scope"] == pooled_scope(metrics["scope"])]
+    return {
+        f"{row.position}_{row.method}_{name}": float(value)
+        for row in pooled.itertuples()
+        for name in ("mae", "rmse", "spearman", "interval_coverage")
+        if pd.notna(value := getattr(row, name))
+    }
+
+
 def candidate_coverage(
     candidates: pd.DataFrame, player_week: pd.DataFrame, min_points: float = 10.0
 ) -> dict[str, float]:

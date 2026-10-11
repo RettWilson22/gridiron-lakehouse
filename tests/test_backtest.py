@@ -132,6 +132,25 @@ def test_pooled_scope_is_the_multi_season_scope() -> None:
     assert bt.pooled_scope(["2023", "2023-2025", "2024", "2025"]) == "2023-2025"
 
 
+def test_pooled_metrics_are_keyed_for_mlflow() -> None:
+    projected, ecr = synthetic()
+    later = projected.assign(season=2025)
+    metrics = bt.evaluate(
+        pd.concat([projected, later]), pd.concat([ecr, ecr.assign(season=2025)]), [2024, 2025]
+    )
+    logged = bt.pooled_metrics(metrics)
+    pooled = metrics[metrics["scope"] == "2024-2025"].set_index("method")
+    assert logged["WR_model_mae"] == pytest.approx(pooled.loc["model", "mae"])
+    assert "WR_ecr_spearman" in logged and "WR_ecr_mae" not in logged  # ECR ranks only
+
+
+def test_nothing_to_log_when_no_test_season_was_scored() -> None:
+    projected, ecr = synthetic()
+    metrics = bt.evaluate(projected, ecr.iloc[0:0], [2024])  # no ranking snapshots
+    assert metrics.empty
+    assert bt.pooled_metrics(metrics) == {}
+
+
 def test_candidate_coverage_counts_player_games_in_the_pool() -> None:
     candidates = pd.DataFrame(
         {"season": 2024, "week": 1, "player_id": ["a", "b", "c"], "position": "WR"}
