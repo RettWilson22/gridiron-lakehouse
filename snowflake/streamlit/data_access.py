@@ -26,6 +26,8 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 DBT_DIR = REPO / "snowflake" / "dbt"
 SNAPSHOT_DIR = REPO / "streamlit_public" / "snapshot"
+# Written next to the snapshot's Parquet files by scripts/export_public_snapshot.py.
+SNAPSHOT_MANIFEST = "manifest.json"
 
 # The marts the app reads. scripts/export_public_snapshot.py exports the same list.
 MARTS: Final = (
@@ -161,7 +163,7 @@ class DuckDBSource:
 
 class SnapshotSource(DuckDBSource):
     name = "public"
-    description = "static snapshot, refreshed by hand (public copy)"
+    description = "a static snapshot, refreshed by hand (public copy)"
 
     def __init__(self, directory: Path) -> None:
         super().__init__()
@@ -169,6 +171,10 @@ class SnapshotSource(DuckDBSource):
         for mart in MARTS:
             path = (directory / f"{mart}.parquet").as_posix()
             self._con.execute(f"create view marts.{mart} as select * from read_parquet('{path}')")
+        manifest = directory / SNAPSHOT_MANIFEST
+        if manifest.exists():
+            exported = json.loads(manifest.read_text())["exported_at"][:10]
+            self.description = f"a static snapshot exported {exported} (public copy)"
 
 
 def local_database() -> Path | None:

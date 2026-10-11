@@ -446,7 +446,14 @@ if fmt == "custom":
         "stat line understate their real value."
     )
 settings_json = json.dumps(scoring, sort_keys=True) if fmt == "custom" else ""
-st.sidebar.caption(f"Data: {source().description}")
+# Naive timestamps (Snowflake TIMESTAMP_NTZ) are UTC.
+as_of = pd.to_datetime(
+    run("select max(generated_at) as generated_at from marts.mart_cheat_sheet")["generated_at"],
+    utc=True,
+).iloc[0]
+st.sidebar.caption(
+    f"Data as of {as_of:%b} {as_of.day}, {as_of:%Y %H:%M} UTC, from {source().description}."
+)
 st.sidebar.markdown(
     f"Built on Databricks and Snowflake. [How it works]({REPO_URL}#readme) · "
     f"[Source code]({REPO_URL})"

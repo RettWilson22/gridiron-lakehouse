@@ -11,7 +11,7 @@ export. Steps:
 2. build the dbt project over them in a throwaway DuckDB database;
 3. write each mart the app reads to ``streamlit_public/snapshot/<mart>.parquet``, with
    only the columns listed in ``EXPORTED_COLUMNS`` and the per-player FantasyPros ranks
-   blanked (``BLANKED_COLUMNS``).
+   blanked (``BLANKED_COLUMNS``), and the export time to ``manifest.json``.
 
     python scripts/export_public_snapshot.py
     set -a && . ./.env && set +a && python scripts/export_public_snapshot.py --from-databricks
@@ -20,6 +20,7 @@ export. Steps:
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import importlib.util
 import json
 import os
@@ -194,7 +195,9 @@ def _app_data_access() -> ModuleType:
     return module
 
 
-MARTS: tuple[str, ...] = tuple(_app_data_access().MARTS)
+_APP_DATA = _app_data_access()
+MARTS: tuple[str, ...] = tuple(_APP_DATA.MARTS)
+MANIFEST: str = _APP_DATA.SNAPSHOT_MANIFEST
 # Exported as typed NULLs: the app expects the column, but per-player FantasyPros ranks
 # are third-party content, so the public copy keeps only the accuracy comparison against
 # them (mart_backtest_summary), not the ranks themselves.
@@ -233,7 +236,8 @@ def build_marts(serving_dir: Path, database: Path) -> None:
 
 
 def export_marts(database: Path, out_dir: Path) -> dict[str, int]:
-    """Copy each mart the app reads from a DuckDB build into Parquet files."""
+    """Copy each mart the app reads from a DuckDB build into Parquet files, plus a manifest
+    with the export time (the app shows it)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     rows = {}
     with duckdb.connect(str(database), read_only=True) as con:
@@ -247,6 +251,8 @@ def export_marts(database: Path, out_dir: Path) -> dict[str, int]:
             con.execute(f"COPY (SELECT {select} FROM marts.{mart}) TO '{target}' (FORMAT PARQUET)")
             result = con.execute(f"SELECT count(*) FROM marts.{mart}").fetchone()
             rows[mart] = int(result[0]) if result else 0
+    exported_at = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+    (out_dir / MANIFEST).write_text(json.dumps({"exported_at": exported_at}) + "\n")
     return rows
 
 

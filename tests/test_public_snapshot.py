@@ -1,9 +1,10 @@
-"""The committed public snapshot (streamlit_public/snapshot) carries no FantasyPros ranks
-and only the columns the export allows."""
+"""The committed public snapshot (streamlit_public/snapshot) carries no FantasyPros ranks,
+only the columns the export allows, and its export time."""
 
 from __future__ import annotations
 
 import importlib.util
+import json
 from types import ModuleType
 
 import pandas as pd
@@ -44,3 +45,9 @@ def test_blanked_columns_are_allowed_columns() -> None:
     exporter = load_exporter()
     for mart, columns in exporter.BLANKED_COLUMNS.items():
         assert set(columns) <= set(exporter.EXPORTED_COLUMNS[mart]), mart
+
+
+def test_the_committed_snapshot_records_when_it_was_exported() -> None:
+    exported = pd.Timestamp(json.loads((SNAPSHOT / "manifest.json").read_text())["exported_at"])
+    generated = pd.read_parquet(SNAPSHOT / "mart_cheat_sheet.parquet")["generated_at"].max()
+    assert generated <= exported

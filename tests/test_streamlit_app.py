@@ -8,6 +8,7 @@ for Streamlit in Snowflake.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -78,6 +79,17 @@ def test_cheat_sheet_renders_the_upcoming_week(app: AppTest) -> None:
     assert {"Tier", "Rank", "Player", "Matchup", "Proj", "Range (10th-90th)"} <= set(table.columns)
     assert table["Rank"].is_monotonic_increasing
     assert "Actual" not in table.columns  # the upcoming week has not been played
+
+
+def test_the_sidebar_says_when_the_data_was_generated(app: AppTest) -> None:
+    import duckdb  # noqa: PLC0415 - only this test reads the marts directly
+
+    with duckdb.connect(str(CI_DB), read_only=True) as con:
+        newest = con.sql("select max(generated_at) from marts.mart_cheat_sheet").fetchone()
+    assert newest is not None
+    stamp = pd.Timestamp(newest[0]).tz_convert("UTC")
+    expected = f"Data as of {stamp:%b} {stamp.day}, {stamp:%Y %H:%M} UTC, from DuckDB"
+    assert any(c.value.startswith(expected) for c in app.sidebar.caption)
 
 
 def test_positions_formats_and_past_weeks(app: AppTest) -> None:
@@ -234,7 +246,9 @@ def test_public_mode_reads_an_exported_snapshot(
     test = AppTest.from_file(str(PUBLIC_APP), default_timeout=120)
     test.run()
     assert not test.exception
-    assert "static snapshot" in " ".join(c.value for c in test.sidebar.caption)
+    exported = json.loads((tmp_path / "manifest.json").read_text())["exported_at"][:10]
+    captions = " ".join(c.value for c in test.sidebar.caption)
+    assert f"from a static snapshot exported {exported} (public copy)" in captions
     assert not sheet(test).empty
 
 
