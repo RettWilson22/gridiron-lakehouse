@@ -95,7 +95,12 @@ def _default_fetch(url: str) -> BinaryIO:
 
 
 def season_of_date(day: dt.date) -> int:
-    """NFL season a calendar date belongs to (January-February games are the prior season)."""
+    """NFL season a calendar date belongs to (January-February games are the prior season).
+
+    Used to file ranking scrapes by season, so from March on a date counts toward the coming
+    season. ``config.current_season`` answers a different question (which season's data to
+    refresh) and only moves on in September, when that season's files start to appear.
+    """
     return day.year if day.month >= 3 else day.year - 1
 
 

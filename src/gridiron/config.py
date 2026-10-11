@@ -24,7 +24,8 @@ def current_season(today: dt.date | None = None) -> int:
     """Return the NFL season that is in progress (or most recently finished) on ``today``.
 
     The regular season starts in September; January and February games belong to the
-    previous calendar year's season.
+    previous calendar year's season. Unlike ``ingest.season_of_date``, March to August still
+    count as the previous season here: the new season has no data to refresh yet.
     """
     today = today or dt.date.today()
     return today.year if today.month >= 9 else today.year - 1
