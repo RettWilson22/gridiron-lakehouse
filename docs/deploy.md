@@ -6,7 +6,8 @@ repository root unless noted.
 
 ## What you need
 
-* Python 3.12, Java 17 or newer (local Spark), `make`, `openssl`; then `make setup`.
+* uv (it provides Python 3.12), Java 17 or newer (local Spark), `make`, `openssl`; then
+  `make setup`, which installs the locked dependencies from `uv.lock`.
 * A Databricks Free Edition workspace and the Databricks CLI (the version with
   `databricks bundle`).
 * A Snowflake trial account where you have ACCOUNTADMIN.

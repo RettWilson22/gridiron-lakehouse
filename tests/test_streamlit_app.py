@@ -1,8 +1,7 @@
 """Run the Streamlit app headlessly in local (DuckDB) and public (snapshot) modes.
 
 Uses the dbt CI build of the fixture marts (``make dbt-ci`` runs before pytest in
-``make check`` and in CI). The same file runs under Streamlit 1.52.2, the version pinned
-for Streamlit in Snowflake.
+``make check`` and in CI), with the Streamlit version in ``uv.lock``.
 """
 
 from __future__ import annotations

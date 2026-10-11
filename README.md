@@ -144,10 +144,11 @@ position words ("lions wr"), and ranks ties by this week's projection.
 
 ## Quickstart
 
-Needs Python 3.12, Java 17 or newer (local Spark) and make.
+Needs [uv](https://docs.astral.sh/uv/), Java 17 or newer (local Spark) and make. uv installs
+Python 3.12 if it is missing.
 
 ```bash
-make setup        # .venv with every extra
+make setup        # .venv from uv.lock, with every extra
 make check        # ruff, mypy, generated-SQL check, dbt build on DuckDB, pytest
 make app-public   # the app on http://localhost:8501 against the committed snapshot
 ```

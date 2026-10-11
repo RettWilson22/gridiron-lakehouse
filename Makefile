@@ -1,5 +1,4 @@
 # Common tasks. Everything runs from the repository root with the project virtualenv.
-PYTHON ?= python3.12
 VENV   ?= .venv
 BIN    := $(VENV)/bin
 DBT    := cd snowflake/dbt && ../../$(BIN)/dbt
@@ -12,10 +11,8 @@ TARGET ?= prod
 help:  ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
-setup:  ## Create the virtualenv and install the project with all local extras
-	$(PYTHON) -m venv $(VENV)
-	$(BIN)/pip install --upgrade pip
-	$(BIN)/pip install -e ".[spark,ml,app,sync,dev]"
+setup:  ## Create .venv from uv.lock with every extra (run `uv lock` after changing dependencies)
+	uv sync --locked --all-extras
 
 lint:  ## Ruff lint and format check
 	$(BIN)/ruff check .
