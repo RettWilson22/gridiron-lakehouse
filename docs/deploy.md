@@ -212,10 +212,22 @@ it is exported and committed again.
 
 ## 5. Each week
 
-The Databricks job runs on its own. After a run, `make sync` and the dbt build refresh
-Snowflake, and the task rebuilds results for any week whose actuals changed. The sync, the
-dbt build and the snapshot export are run by hand from a laptop; a scheduled GitHub Action
-or dbt Projects on Snowflake could run them.
+The Databricks job runs on its own (Tuesday, Thursday and Saturday at 12:00 UTC, usually
+done within 15 minutes). Nothing downstream is scheduled to follow it: the sync, the dbt
+build and the snapshot export are run by hand from a laptop, in this order, once the run
+has succeeded:
+
+1. `make sync`, so `SYNCED` matches the new serving tables.
+2. The dbt build from section 3.4, so `MARTS` and the Snowflake app show them.
+3. The task rebuilds results for any week whose results or projections changed on its own
+   schedule, Tuesday at 14:00 UTC. After a sync that lands later than that, or on a
+   Thursday or Saturday, run it now with the `EXECUTE TASK` line at the end of
+   `01_projection_results_stream_task.sql`.
+4. The snapshot export from section 4, when the public copy should catch up.
+
+Both apps show the newest `generated_at` in the sidebar ("Data as of ..."), and the public
+copy also shows the date its snapshot was exported, so a missed step shows up there. A
+scheduled GitHub Action or dbt Projects on Snowflake could run steps 1 and 2.
 
 ## The Iceberg path (workspaces with external storage)
 
