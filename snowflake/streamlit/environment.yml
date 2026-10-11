@@ -4,7 +4,8 @@ channels:
   - snowflake
 dependencies:
   # Pinned: the warehouse runtime's default Streamlit is too old for the APIs the app uses
-  # (st.dataframe hide_index/width, column_config). 1.52.2 is the newest in the channel.
+  # (st.dataframe hide_index/width, column_config).
+  # 1.52.2 is the newest Streamlit in the Snowflake channel (checked 2026-10-11).
   - streamlit=1.52.2
   - altair
   - pandas

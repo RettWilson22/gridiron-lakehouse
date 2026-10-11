@@ -180,7 +180,8 @@ snow sql -f snowflake/streamlit/01_create_streamlit.sql
 * The app is created on the warehouse runtime (`RUNTIME_NAME = 'SYSTEM$WAREHOUSE_RUNTIME'`),
   because trial accounts cannot always start the compute pool the container runtime needs.
   `snowflake/streamlit/environment.yml` pins Streamlit 1.52.2, the newest in the Snowflake
-  channel. Viewers need only `GRIDIRON_READER`.
+  channel (it has two published CVEs; the public copy runs a newer release). Viewers need
+  only `GRIDIRON_READER`.
 
 ### 3.5 Updating an existing deployment
 
