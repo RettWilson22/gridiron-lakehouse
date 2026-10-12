@@ -14,7 +14,7 @@ from __future__ import annotations
 import html
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Hashable
 from typing import Any
 
 import altair as alt
@@ -33,194 +33,261 @@ POOL: dict[str, int] = dict(tiers.POOL)
 _POOL_PARTS = [f"{size} {position}s" for position, size in POOL.items()]
 POOL_TEXT = ", ".join(_POOL_PARTS[:-1]) + " and " + _POOL_PARTS[-1]
 CHART_PLAYERS = 24
-ROW_HEIGHT = 30  # compact table rows, like box-score agate
+ROW_HEIGHT = 34
 REPO_URL = "https://github.com/RettWilson22/gridiron-lakehouse"
-# A newspaper sports page: ink on newsprint, field green for the model and the active
-# section, brick red only for warnings (Sit, injury designations).
-INK = "#1b1b1b"
-GREEN = "#2f5d3a"
-BRICK = "#a33a2c"
-GRAY = "#8a8272"
-# Text and figures in a serif with lining numerals (Georgia's old-style figures don't line
-# up in a table); Georgia for the nameplate and headlines.
-TEXT_FONT = "Charter, 'Bitstream Charter', Cambria, 'Times New Roman', serif"
-# Comparison lines (color, dash): the model stands out, the baselines recede.
+# Color has a job: field green for Start, the model and the active section; red for Sit and
+# Out or Doubtful; amber for Questionable. Every text color clears WCAG AA on the page and
+# on white.
+INK = "#16181c"
+MUTED = "#5c6168"
+GREEN = "#1e6b3c"
+RED = "#b42318"
+AMBER = "#9a5b00"
+GRAY = "#7b8087"
+BAND = "#f3f0e8"  # every other tier in the cheat sheet
+# Barlow is served with the public copy (streamlit_public/.streamlit/config.toml). Streamlit
+# in Snowflake blocks web fonts, so both stacks fall back to system faces.
+TEXT_FONT = "Barlow, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif"
+DISPLAY_FONT = (
+    "'Barlow Semi Condensed', 'Avenir Next Condensed', 'Bahnschrift SemiCondensed', "
+    "'Roboto Condensed', 'Arial Narrow', sans-serif"
+)
+# Comparison lines (color, dash, width): the model stands out, the baselines recede.
 METHOD_STYLE = {
-    "Model": (GREEN, [1, 0]),
-    "Last 3 average": (GRAY, [1, 0]),
-    "Season average": (GRAY, [5, 3]),
-    "Expert rankings": (BRICK, [1, 0]),
+    "Model": (GREEN, [1, 0], 3.0),
+    "Last 3 average": (GRAY, [1, 0], 1.5),
+    "Season average": (GRAY, [5, 3], 1.5),
+    "Expert rankings": (GRAY, [1, 0], 1.5),
 }
 # Chart keys sit under the plot, two entries to a row so they fit on a phone.
 KEY = alt.Legend(orient="bottom", columns=2)
 
-# System fonts only (Streamlit in Snowflake blocks web fonts). Streamlit in Snowflake does
-# not read .streamlit/config.toml, so the page colors and type are set here as well.
-STYLE = """
-<style>
-:root { --gl-paper: #f7f4ec; --gl-paper2: #efeadf; --gl-ink: #1b1b1b; --gl-muted: #5c574d;
-  --gl-green: #2f5d3a; --gl-brick: #a33a2c; --gl-rule: #c9c1b0;
-  --gl-serif: Georgia, "Times New Roman", serif;
-  --gl-text: Charter, "Bitstream Charter", Cambria, "Times New Roman", serif; }
+# Streamlit in Snowflake does not read .streamlit/config.toml, so the page colors and type
+# are set here as well. Rules that differ between Streamlit 1.52 (Snowflake) and 1.65 (the
+# public copy) name the 1.52 element first.
+STYLE = (
+    "<style>:root { "
+    f"--gl-ink: {INK}; --gl-muted: {MUTED}; --gl-green: {GREEN}; --gl-red: {RED}; "
+    f"--gl-amber: {AMBER}; --gl-text: {TEXT_FONT}; --gl-display: {DISPLAY_FONT}; "
+    "--gl-page: #f6f4ef; --gl-side: #eeebe4; --gl-surface: #ffffff; --gl-rule: #dcd8cf; "
+    "--gl-edge: #857f74; }"
+    """
 header[data-testid="stHeader"] { background: transparent; }
 footer { display: none; }
-.stApp { background: var(--gl-paper); color: var(--gl-ink); }
-.stApp p, .stApp li, .stApp label, .stApp input, .stApp textarea { font-family: var(--gl-text); }
-[data-testid="stSidebar"] { background: var(--gl-paper2); border-right: 1px solid var(--gl-rule); }
-[data-testid="stSidebar"] h2 { font-size: 1.05rem; font-variant-caps: small-caps;
-  letter-spacing: 0.08em; border-bottom: 1px solid var(--gl-ink); padding: 0 0 0.2rem;
-  margin-bottom: 0.4rem; }
-/* Narrow margins, like a page set edge to edge: the wide stat tables fit at 1366px. */
-.block-container { padding: 2.6rem 2rem 4rem; max-width: 1180px; }
-h1, h2, h3, h4 { font-family: var(--gl-serif) !important; color: var(--gl-ink); }
-[data-testid="stCaptionContainer"] { opacity: 1; }
-[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p { color: var(--gl-muted); }
+.stApp { background: var(--gl-page); color: var(--gl-ink); font-family: var(--gl-text); }
+.stApp p, .stApp li, .stApp label, .stApp input, .stApp textarea, .stApp button,
+.stApp [data-baseweb="select"] div { font-family: var(--gl-text); }
+.stApp h1, .stApp h2, .stApp h3, .stApp h4 { font-family: var(--gl-display) !important;
+  color: var(--gl-ink); letter-spacing: 0; }
 .stApp a { color: var(--gl-green); }
-.stMarkdownColoredText { color: var(--gl-brick) !important; }
+.block-container, [data-testid="stMainBlockContainer"] { padding: 1.5rem 2rem 3rem;
+  max-width: 1200px; }
+html, body, .stApp, [data-testid="stMain"] { overflow-x: hidden; }
+.stApp [data-baseweb="input"], .stApp [data-baseweb="select"] > div,
+.stApp [data-baseweb="textarea"], .stApp button { border-radius: 3px; }
+/* Streamlit in Snowflake has no theme, and its default red accent would read as a warning. */
+.stApp label[data-baseweb="radio"]:has(input:checked) > div:first-child {
+  background-color: var(--gl-green); }
+.stApp [data-testid^="stBaseButton-primary"] { background-color: var(--gl-green);
+  border-color: var(--gl-green); color: #ffffff; }
+.stApp [data-testid^="stBaseButton-primary"]:hover { background-color: #17552f; }
+.stApp [data-baseweb="input"]:focus-within, .stApp [data-baseweb="select"] > div:focus-within {
+  border-color: var(--gl-green); }
 
-.gl-masthead { text-align: center; margin-bottom: 0.4rem; }
-.gl-nameplate { font-family: var(--gl-serif); font-weight: 700; color: var(--gl-ink);
-  font-size: clamp(1.9rem, 7.4vw, 3.9rem); line-height: 1.05; letter-spacing: -0.01em;
-  padding-bottom: 0.45rem; white-space: nowrap; }
-.gl-rules { border-top: 1px solid var(--gl-ink); border-bottom: 3px solid var(--gl-ink);
-  height: 6px; }
-.gl-dateline { display: flex; justify-content: space-between; gap: 0 1rem; flex-wrap: wrap;
-  font-family: var(--gl-text); font-variant-caps: small-caps; letter-spacing: 0.06em;
-  font-size: 0.95rem; color: var(--gl-ink); padding: 0.3rem 0;
-  border-bottom: 1px solid var(--gl-ink); }
+[data-testid="stSidebar"] { background: var(--gl-side); border-right: 1px solid var(--gl-rule); }
+[data-testid="stSidebar"] h3 { font-size: 1.1rem; font-weight: 700; padding: 0.6rem 0 0; }
+[data-testid="stCaptionContainer"] { opacity: 1; }
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p { color: var(--gl-muted);
+  font-size: 0.95rem; }
 
-/* Section links, like a newspaper's index line: small caps between thin rules. The
-   leftmost rule on each line is clipped, so the links wrap cleanly on a phone. */
-.st-key-section { width: 100%; overflow: hidden; border-bottom: 1px solid var(--gl-ink);
-  padding: 0.1rem 0 0.45rem; margin-bottom: 0.6rem; }
-.st-key-section [role="radiogroup"] { gap: 0.3rem 0; flex-wrap: wrap;
-  margin-left: calc(-1rem - 1px); }
-.st-key-section [role="radiogroup"] label { border-left: 1px solid var(--gl-rule);
-  padding: 0.05rem 1rem; margin: 0; cursor: pointer; }
-/* The radio dot is the label's first child in Streamlit 1.52 (Snowflake) and sits beside the
-   text in 1.65 (the public copy); hide it in both. */
+/* Header: wordmark, one muted line, then the section tabs. */
+.gl-wordmark { font-family: var(--gl-display); font-weight: 700; font-size: 1.75rem;
+  line-height: 1.1; text-transform: uppercase; letter-spacing: 0.02em; color: var(--gl-ink); }
+.gl-tagline { font-size: 0.95rem; color: var(--gl-muted); margin-top: 0.15rem; }
+
+/* Section tabs: the radio keeps its place across reruns, which st.tabs does not. */
+.st-key-section { width: 100%; border-bottom: 1px solid var(--gl-rule); margin-top: -0.6rem; }
+.st-key-section [role="radiogroup"] { gap: 0 1.75rem; flex-wrap: wrap; }
+.st-key-section [role="radiogroup"] label { margin: 0 0 -1px; padding: 0.6rem 0 0.45rem;
+  border-bottom: 3px solid transparent; cursor: pointer; }
+.st-key-section [role="radiogroup"] label p { font-family: var(--gl-display); font-weight: 600;
+  font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gl-muted); }
+.st-key-section [role="radiogroup"] label:hover { border-bottom-color: var(--gl-rule); }
+.st-key-section [role="radiogroup"] label:hover p { color: var(--gl-ink); }
+.st-key-section [role="radiogroup"] label:has(input:checked) {
+  border-bottom-color: var(--gl-green); }
+.st-key-section [role="radiogroup"] label:has(input:checked) p { color: var(--gl-ink); }
+
+/* Position pickers as a segmented control. */
+.st-key-position [role="radiogroup"], .st-key-record_position [role="radiogroup"] { gap: 0;
+  flex-wrap: nowrap; }
+.st-key-position [role="radiogroup"] label, .st-key-record_position [role="radiogroup"] label {
+  margin: 0 0 0 -1px; padding: 0.35rem 0.95rem; background: var(--gl-surface);
+  border: 1px solid var(--gl-edge); cursor: pointer; }
+.st-key-position label:first-child, .st-key-record_position label:first-child {
+  border-radius: 3px 0 0 3px; }
+.st-key-position label:last-child, .st-key-record_position label:last-child {
+  border-radius: 0 3px 3px 0; }
+.st-key-position [role="radiogroup"] label p, .st-key-record_position [role="radiogroup"] label p {
+  font-family: var(--gl-display); font-weight: 600; font-size: 0.95rem; letter-spacing: 0.04em;
+  color: var(--gl-ink); }
+.st-key-position label:has(input:checked), .st-key-record_position label:has(input:checked) {
+  background: var(--gl-ink); border-color: var(--gl-ink); }
+.st-key-position label:has(input:checked) p, .st-key-record_position label:has(input:checked) p {
+  color: #ffffff; }
+
+/* The A-Z player index: plain letters, the current one underlined. */
+.st-key-index_letter [role="radiogroup"] { gap: 2px; flex-wrap: wrap; }
+.st-key-index_letter [role="radiogroup"] label { padding: 0.1rem 0.35rem; margin: 0;
+  cursor: pointer; }
+.st-key-index_letter [role="radiogroup"] label p { font-family: var(--gl-display);
+  font-weight: 600; font-size: 1.05rem; color: var(--gl-muted); text-underline-offset: 5px; }
+.st-key-index_letter [role="radiogroup"] label:has(input:checked) p { color: var(--gl-ink);
+  text-decoration: underline 3px var(--gl-green); }
+
+/* The radio dot is the label's first child in 1.52 and sits beside the text in 1.65. */
 .st-key-section [role="radiogroup"] label > div:first-child,
 .st-key-section [role="radiogroup"] label div:has(+ [data-testid="stMarkdownContainer"]),
+.st-key-position [role="radiogroup"] label > div:first-child,
+.st-key-position [role="radiogroup"] label div:has(+ [data-testid="stMarkdownContainer"]),
+.st-key-record_position [role="radiogroup"] label > div:first-child,
+.st-key-record_position [role="radiogroup"] label div:has(+ [data-testid="stMarkdownContainer"]),
 .st-key-index_letter [role="radiogroup"] label > div:first-child,
 .st-key-index_letter [role="radiogroup"] label div:has(+ [data-testid="stMarkdownContainer"]) {
   display: none; }
-.st-key-section [role="radiogroup"] label > div:last-child { padding-left: 0; }
-.st-key-section [role="radiogroup"] label p { font-size: 1.08rem; font-variant-caps: small-caps;
-  letter-spacing: 0.05em; color: var(--gl-ink); text-underline-offset: 5px; }
-.st-key-section [role="radiogroup"] label:hover p { text-decoration: underline 1px var(--gl-rule); }
-.st-key-section [role="radiogroup"] label:has(input:checked) p { color: var(--gl-green);
-  font-weight: 700; text-decoration: underline 2px var(--gl-green); }
+.st-key-section [role="radiogroup"] label > div:last-child,
+.st-key-position [role="radiogroup"] label > div:last-child,
+.st-key-record_position [role="radiogroup"] label > div:last-child,
+.st-key-index_letter [role="radiogroup"] label > div:last-child { padding-left: 0; }
 /* Keyboard focus ring. In 1.65 the browser's :focus-visible also matches after a click, so
    use the data-focus-visible flag react-aria sets for keyboard focus only. */
-.st-key-section [role="radiogroup"] label:not([data-rac]):has(input:focus-visible) p,
-.st-key-index_letter [role="radiogroup"] label:not([data-rac]):has(input:focus-visible) p,
-.st-key-section [role="radiogroup"] label[data-focus-visible] p,
-.st-key-index_letter [role="radiogroup"] label[data-focus-visible] p {
+.stApp [role="radiogroup"] label:not([data-rac]):has(input:focus-visible),
+.stApp [role="radiogroup"] label[data-focus-visible] {
   outline: 2px solid var(--gl-green); outline-offset: 2px; }
 
-/* The A-Z player index reads like the index of a book: plain letters, current one underlined. */
-.st-key-index_letter [role="radiogroup"] { gap: 2px; flex-wrap: wrap; }
-.st-key-index_letter [role="radiogroup"] label { padding: 0.1rem 0.3rem; margin: 0;
-  cursor: pointer; }
-.st-key-index_letter [role="radiogroup"] label > div:last-child { padding-left: 0; }
-.st-key-index_letter [role="radiogroup"] label p { font-size: 1.1rem; color: var(--gl-ink);
-  text-underline-offset: 4px; }
-.st-key-index_letter [role="radiogroup"] label:has(input:checked) p { color: var(--gl-green);
-  font-weight: 700; text-decoration: underline 2px var(--gl-green); }
+/* Section titles: one heading and at most one muted line. */
+[data-testid="stMain"] h2 { font-size: 2rem; font-weight: 700; line-height: 1.1;
+  padding: 0.5rem 0 0; }
+[data-testid="stMain"] h3 { font-size: 1.2rem; font-weight: 700; padding: 0.75rem 0 0; }
 
-/* Headline numbers as a box-score line: small-caps labels, serif figures, thin rules. */
-.stHorizontalBlock:has(.stMetric) { gap: 0;
-  border-top: 1px solid var(--gl-ink); border-bottom: 1px solid var(--gl-ink); }
-.stHorizontalBlock:has(.stMetric) > .stColumn {
-  padding: 0.45rem 1rem 0.5rem; }
-.stHorizontalBlock:has(.stMetric) > .stColumn:first-child {
-  padding-left: 0; }
-.stHorizontalBlock:has(.stMetric) > .stColumn + .stColumn {
-  border-left: 1px solid var(--gl-rule); }
-/* Figures line up when a label wraps: column heads sit on the figures, as in print. */
-.stVerticalBlock:has(> .stElementContainer:only-child > .stMetric) { justify-content: flex-end; }
-[data-testid="stMetricLabel"] p { font-variant-caps: small-caps; letter-spacing: 0.05em;
-  color: var(--gl-muted); white-space: normal; }
+/* Headline numbers: small muted labels, figures that line up. */
+[data-testid="stMetricLabel"] p { font-family: var(--gl-display); font-weight: 600;
+  font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gl-muted);
+  white-space: normal; line-height: 1.25; }
 [data-testid="stMetricLabel"] > div:first-child { overflow: visible; }
-[data-testid="stMetricValue"] { color: var(--gl-ink); font-size: 2.1rem; line-height: 1.2; }
-[data-testid="stMetricValue"], [data-testid="stMetricValue"] > div { font-family: var(--gl-text); }
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] > div { font-family: var(--gl-text);
+  font-weight: 600; font-variant-numeric: tabular-nums; }
+[data-testid="stMetricValue"] { color: var(--gl-ink); font-size: 1.85rem; line-height: 1.15; }
+.stVerticalBlock:has(> .stElementContainer:only-child > .stMetric) { justify-content: flex-end; }
+/* Metric rows (the headline numbers and the player card) are divided by thin rules. */
+.st-key-kpis .stHorizontalBlock, .st-key-player_card .stHorizontalBlock { gap: 0; }
+.st-key-kpis .stColumn, .st-key-player_card .stColumn { padding: 0 1rem; }
+.st-key-kpis .stColumn:first-child, .st-key-player_card .stColumn:first-child { padding-left: 0; }
+.st-key-kpis .stColumn + .stColumn, .st-key-player_card .stColumn + .stColumn {
+  border-left: 1px solid var(--gl-rule); }
+.st-key-kpis .stHorizontalBlock { flex-wrap: nowrap; }
+.st-key-kpis .stColumn { min-width: 0; }
+.st-key-kpis [data-testid="stMetricValue"] { font-size: 1.6rem; }
 
-/* Notes read as an editor's note between rules, not a colored box. */
-.stAlert [data-testid="stAlertContainer"] { background: transparent; border-radius: 0;
-  border-top: 1px solid var(--gl-rule); border-bottom: 1px solid var(--gl-rule);
-  padding: 0.55rem 0; }
-.stAlert [data-testid="stAlertContainer"] p { color: var(--gl-ink); font-style: italic; }
+/* Notes, not alarms. */
+.stAlert [data-testid="stAlertContainer"] { background: var(--gl-surface); color: var(--gl-ink);
+  border: 1px solid var(--gl-rule); border-left: 3px solid var(--gl-muted); border-radius: 3px;
+  padding: 0.5rem 0.85rem; }
+.stAlert [data-testid="stAlertContainer"] p { color: var(--gl-ink); font-size: 0.95rem; }
 
-/* Tables open with a heavy rule, like a box score. */
-[data-testid="stDataFrame"] { border-top: 2px solid var(--gl-ink); }
-
-/* Toggles and chosen players as plain ink boxes, not app pills. Each rule names the 1.52
-   (Snowflake) element first and the 1.65 (public copy) one second. */
+/* Toggles and chosen players: square, quiet, green when on. */
 .stCheckbox label[data-baseweb="checkbox"] > div:first-child,
-.stCheckbox label > span + div { background: transparent;
-  border: 1px solid var(--gl-ink); border-radius: 0; }
+.stCheckbox label > span + div { background: var(--gl-surface);
+  border: 1px solid var(--gl-edge); border-radius: 3px; }
 .stCheckbox label[data-baseweb="checkbox"] > div:first-child > div,
-.stCheckbox label > span + div > div { background: var(--gl-ink);
-  border-radius: 0; box-shadow: none; }
+.stCheckbox label > span + div > div { background: var(--gl-muted);
+  border-radius: 2px; box-shadow: none; }
 .stCheckbox label:has(input:checked) > div:first-child,
 .stCheckbox label:has(input:checked) > span + div { background: var(--gl-green);
   border-color: var(--gl-green); }
 .stCheckbox label:has(input:checked) > div:first-child > div,
-.stCheckbox label:has(input:checked) > span + div > div { background: var(--gl-paper); }
+.stCheckbox label:has(input:checked) > span + div > div { background: var(--gl-surface); }
 [data-testid="stMultiSelect"] [data-baseweb="tag"],
-[data-testid="stMultiSelect"] [data-tag] { background: transparent;
-  border: 1px solid var(--gl-ink); border-radius: 0; color: var(--gl-ink); max-width: none; }
+[data-testid="stMultiSelect"] [data-tag] { background: var(--gl-page);
+  border: 1px solid var(--gl-edge); border-radius: 2px; color: var(--gl-ink); max-width: none; }
 [data-testid="stMultiSelect"] [data-baseweb="tag"] span,
 [data-testid="stMultiSelect"] [data-tag] span { color: var(--gl-ink); max-width: none; }
 [data-testid="stMultiSelect"] [data-baseweb="tag"] svg,
-[data-testid="stMultiSelect"] [data-tag] svg { color: var(--gl-brick); }
-.stHorizontalBlock:has(.stMetric) [data-testid="stCaptionContainer"] p:not(:last-child) {
-  margin-bottom: 0.2rem; }
+[data-testid="stMultiSelect"] [data-tag] svg { color: var(--gl-muted); }
 
-/* Player profile box. */
-.st-key-player_card { border: 1px solid var(--gl-ink); border-top-width: 3px;
-  padding: 0.2rem 1rem 0.6rem; margin-top: 0.4rem; }
-.st-key-player_card [data-testid="stHorizontalBlock"] { border-bottom-color: var(--gl-rule); }
-.stApp .gl-card-name { font-family: var(--gl-serif); font-size: 1.75rem; font-weight: 700;
-  color: var(--gl-ink); margin: 0.4rem 0 0; line-height: 1.15; }
-.stApp .gl-card-meta { font-variant-caps: small-caps; letter-spacing: 0.06em;
-  color: var(--gl-muted); font-size: 1rem; margin-bottom: 0.2rem; }
-.gl-footer { margin-top: 3rem; padding: 0.7rem 0; border-top: 3px double var(--gl-ink);
+/* Tags: position rank, tier, start/sit and injury in one row. */
+.gl-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.4rem 0 0.2rem; }
+.gl-tag { font-family: var(--gl-display); font-weight: 600; font-size: 0.8rem; line-height: 1;
+  text-transform: uppercase; letter-spacing: 0.05em; padding: 0.3rem 0.45rem;
+  border: 1px solid var(--gl-rule); border-radius: 2px; color: var(--gl-ink);
+  background: var(--gl-surface); }
+.gl-tag-start { background: var(--gl-green); border-color: var(--gl-green); color: #ffffff; }
+.gl-tag-sit, .gl-tag-out { color: var(--gl-red); border-color: var(--gl-red); }
+.gl-tag-questionable { color: var(--gl-amber); border-color: var(--gl-amber); }
+
+/* Start / Sit: the verdict first, then one card per player. */
+.gl-verdict { background: var(--gl-surface); border: 1px solid var(--gl-rule);
+  border-left: 4px solid var(--gl-green); border-radius: 3px; padding: 0.8rem 1.1rem;
+  margin-bottom: 1rem; }
+.stApp .gl-verdict-call { font-family: var(--gl-display); font-weight: 700; font-size: 1.6rem;
+  line-height: 1.15; margin: 0; color: var(--gl-ink); }
+.gl-verdict-call span { color: var(--gl-green); }
+.stApp .gl-verdict-why { margin: 0.25rem 0 0; color: var(--gl-ink); }
+.gl-compare { background: var(--gl-surface); border: 1px solid var(--gl-rule); border-radius: 4px;
+  padding: 0.85rem 1.1rem 0.9rem; margin-bottom: 1rem; }
+.gl-compare-pick { border: 2px solid var(--gl-green); }
+.stApp .gl-compare-name { font-family: var(--gl-display); font-weight: 700; font-size: 1.45rem;
+  line-height: 1.15; margin: 0.55rem 0 0; color: var(--gl-ink); }
+.stApp .gl-compare-proj { font-weight: 600; font-size: 2.6rem; line-height: 1.1; margin: 0.2rem 0 0;
+  font-variant-numeric: tabular-nums; color: var(--gl-ink); }
+.gl-compare:not(.gl-compare-pick) .gl-compare-proj { color: var(--gl-muted); }
+.gl-compare-proj span { font-size: 0.9rem; font-weight: 500; color: var(--gl-muted);
+  margin-left: 0.4rem; }
+.stApp .gl-compare-line { margin: 0.15rem 0 0; color: var(--gl-muted);
+  font-variant-numeric: tabular-nums; }
+
+/* Player card. */
+.st-key-player_card { background: var(--gl-surface); border: 1px solid var(--gl-rule);
+  border-top: 3px solid var(--gl-ink); border-radius: 3px; padding: 0.9rem 1.25rem 1rem;
+  margin-top: 0.5rem; }
+.stApp .gl-card-name { font-family: var(--gl-display); font-size: 2rem; font-weight: 700;
+  color: var(--gl-ink); margin: 0; line-height: 1.1; }
+.gl-footer { margin-top: 3rem; padding-top: 0.75rem; border-top: 1px solid var(--gl-rule);
   font-size: 0.85rem; color: var(--gl-muted); }
-html, body, .stApp, [data-testid="stMain"] { overflow-x: hidden; }
+.stApp .gl-footer a { color: var(--gl-muted); }
 
 @media (max-width: 640px) {
-  .block-container { padding-left: 1rem; padding-right: 1rem; padding-top: 2.8rem; }
-  [data-testid="stMain"] h2 { font-size: 1.8rem; }
-  .gl-dateline { justify-content: center; font-size: 0.85rem; gap: 0 0.5rem; }
-  .gl-dateline span:nth-child(2)::before { content: "\\00b7"; margin-right: 0.5rem; }
-  .gl-dateline span:last-child { flex-basis: 100%; }
-  .st-key-section [role="radiogroup"] { margin-left: calc(-0.7rem - 1px); }
-  .st-key-section [role="radiogroup"] label { padding: 0.05rem 0.7rem; }
-  .st-key-section [role="radiogroup"] label p { font-size: 1rem; }
-  /* Stacked on a phone: one ledger line per figure, label left and figure right. */
-  .stHorizontalBlock:has(.stMetric) > .stColumn {
-    padding: 0.3rem 0; }
-  .stHorizontalBlock:has(.stMetric) > .stColumn + .stColumn {
-    border-left: none; border-top: 1px solid var(--gl-rule); }
-  [data-testid="stMetric"] > div { display: flex; justify-content: space-between;
-    align-items: baseline; gap: 1rem; }
-  [data-testid="stMetricValue"] { font-size: 1.5rem; flex: none; }
+  .block-container, [data-testid="stMainBlockContainer"] { padding: 3.25rem 1rem 2rem; }
+  .gl-wordmark { font-size: 1.4rem; }
+  .gl-tagline { font-size: 0.85rem; }
+  .st-key-section [role="radiogroup"] { gap: 0 1.1rem; }
+  .st-key-section [role="radiogroup"] label { padding: 0.5rem 0 0.35rem; }
+  .st-key-section [role="radiogroup"] label p { font-size: 0.9rem; }
+  [data-testid="stMain"] h2 { font-size: 1.6rem; }
+  .st-key-kpis .stColumn { flex: 1 1 0; width: auto; padding: 0 0.6rem; }
+  .st-key-kpis .stColumn:first-child { padding-left: 0; }
+  .st-key-kpis [data-testid="stMetricValue"] { font-size: 1.3rem; }
+  .st-key-kpis [data-testid="stMetricLabel"] p { font-size: 0.68rem; letter-spacing: 0.04em; }
+  /* The player card's stacked metrics read as a ledger: label left, figure right. */
+  .st-key-player_card .stColumn { padding: 0.3rem 0; }
+  .st-key-player_card .stColumn + .stColumn { border-left: none;
+    border-top: 1px solid var(--gl-rule); }
+  .st-key-player_card [data-testid="stMetric"] > div { display: flex;
+    justify-content: space-between; align-items: baseline; gap: 1rem; }
+  .st-key-player_card [data-testid="stMetricValue"] { font-size: 1.4rem; flex: none; }
+  .stApp .gl-compare-proj { font-size: 2.2rem; }
 }
 </style>
 """
-MASTHEAD = """
-<div class="gl-masthead">
-  <div class="gl-nameplate">Gridiron Lakehouse</div>
-  <div class="gl-rules"></div>
-  <div class="gl-dateline"><span>{season} season</span><span>Week {week} projections</span>
-    <span>Fantasy football cheat sheet</span></div>
-</div>
+)
+HEADER = """
+<div class="gl-wordmark">Gridiron Lakehouse</div>
+<div class="gl-tagline">Fantasy football cheat sheet · {season} season · Week {week} ·
+  {scoring}</div>
 """
 
 st.set_page_config(page_title="Gridiron Lakehouse | Fantasy Cheat Sheet", layout="wide")
 st.markdown(STYLE, unsafe_allow_html=True)
-masthead = st.empty()  # filled in once the week is known, for the dateline
 
 
 @st.cache_resource
@@ -315,6 +382,7 @@ def fmt_range(low: float, high: float) -> str:
 # Markdown, HTML and Streamlit syntax characters (links, images, emphasis, raw HTML,
 # :color[...] directives, $math$).
 _MARKDOWN_SYNTAX = re.compile(r"([\\`*_{}\[\]()<>#+\-.!|~$:&])")
+_LINK_SYNTAX = str.maketrans({"[": "&#91;", "]": "&#93;", "(": "&#40;", ")": "&#41;"})
 
 
 def plain(value: object) -> str:
@@ -325,20 +393,27 @@ def plain(value: object) -> str:
     return _MARKDOWN_SYNTAX.sub(r"\\\1", str(value))
 
 
+def html_text(value: object) -> str:
+    """Third-party text for the raw HTML blocks (cards and tags): HTML-escaped, on one line
+    (a blank line would end the HTML block and let Markdown parse the rest), and with link
+    brackets as entities."""
+    return html.escape(" ".join(str(value).split())).translate(_LINK_SYNTAX)
+
+
 def show_chart(chart: Any) -> None:
-    """An Altair chart set like a newspaper graphic: serif type, ink axes, no frame, and
-    faint rules only on the value axis. Titles go in a heading above the chart: Streamlit's
+    """An Altair chart in the app's type and colors: muted axes, no frame, and faint rules
+    only on the value axis. Titles go in a heading above the chart: Streamlit's
     fit-to-height layout can push a Vega title out of view."""
     st.altair_chart(
-        chart.configure(font=TEXT_FONT)
+        chart.configure(font=TEXT_FONT, background="transparent")
         .configure_axis(
             grid=False,
             domain=True,
             labelLimit=220,
-            domainColor=INK,
-            tickColor=INK,
-            labelColor=INK,
-            titleColor=INK,
+            domainColor="#b9b4a9",
+            tickColor="#b9b4a9",
+            labelColor=MUTED,
+            titleColor=MUTED,
             labelFont=TEXT_FONT,
             titleFont=TEXT_FONT,
             labelFontSize=12,
@@ -350,16 +425,16 @@ def show_chart(chart: Any) -> None:
         .configure_axisY(
             titleAngle=0, titleAlign="left", titleBaseline="bottom", titleX=0, titleY=-8
         )
-        .configure_axisQuantitative(grid=True, gridColor="#e2dccf")
+        .configure_axisQuantitative(grid=True, gridColor="#e6e2d9")
         .configure_view(stroke=None)
         .configure_legend(
             labelFont=TEXT_FONT,
             labelColor=INK,
-            labelFontSize=12,
+            labelFontSize=13,
             titleFont=TEXT_FONT,
             titleColor=INK,
             symbolType="stroke",
-            symbolStrokeWidth=2.5,
+            symbolStrokeWidth=3,
             symbolSize=180,
             offset=6,
             padding=0,
@@ -371,18 +446,18 @@ def show_chart(chart: Any) -> None:
 def box_score(
     frame: pd.DataFrame,
     config: dict[str, Any] | None = None,
-    flagged: tuple[str, ...] = (),
+    styles: Callable[[pd.DataFrame], pd.DataFrame] | None = None,
     **options: Any,
 ) -> Any:
-    """A table set like a box score: compact rows and capitalized column heads (labels
-    only; the data keeps its column names). Cells in ``flagged`` columns that call for
-    action are printed in brick red."""
+    """A table with uppercase column heads (labels only; the data keeps its column names)
+    and blank missing values. ``styles`` returns per-cell CSS for pandas ``Styler.apply``;
+    Streamlit honors its color, background-color and font-weight."""
     config = config or {}
     heads: dict[str, Any] = {
         str(c): {**config.get(str(c), {}), "label": str(c).upper()} for c in frame.columns
     }
     return st.dataframe(
-        frame.style.map(flag, subset=list(flagged)) if flagged else frame,
+        frame.style.apply(styles, axis=None) if styles else frame,
         hide_index=True,
         width="stretch",
         # Up to 13 rows, then scroll; the frame ends on a row boundary, not mid-row (the
@@ -390,13 +465,62 @@ def box_score(
         height=min(len(frame), 13) * ROW_HEIGHT + 38,
         row_height=ROW_HEIGHT,
         column_config=heads,
+        placeholder="",
         **options,
     )
 
 
-def flag(value: object) -> str:
-    """Brick red for the cells that call for action: Sit and any injury designation."""
-    return f"color: {BRICK}" if value not in ("", "Start", "Flex") else ""
+def advice_css(advice: object) -> str:
+    return {
+        "Start": f"color: {GREEN}; font-weight: 600",
+        "Sit": f"color: {RED}; font-weight: 600",
+    }.get(str(advice), "font-weight: 600")
+
+
+def injury_css(status: object) -> str:
+    if status in ("", "None"):
+        return ""
+    return f"color: {AMBER if status == 'Questionable' else RED}; font-weight: 600"
+
+
+def sheet_styles(table: pd.DataFrame) -> pd.DataFrame:
+    """Cheat sheet emphasis: every other tier shaded, projection and rank bold, the
+    range muted, Start green, Sit red, Questionable amber and other designations red."""
+    css = pd.DataFrame("", index=table.index, columns=table.columns)
+    shaded = table["Tier"].fillna(0).astype(int) % 2 == 0
+    css.loc[shaded & table["Tier"].notna(), :] = f"background-color: {BAND}; "
+    css["Player"] += "font-weight: 500"
+    css["Rank"] += "font-weight: 600"
+    css["Proj"] += f"font-weight: 600; color: {INK}"
+    css["Range (10th-90th)"] += f"color: {MUTED}"
+    css["Team"] += f"color: {MUTED}"
+    css["Matchup"] += f"color: {MUTED}"
+    css["Tier"] += f"color: {MUTED}"
+    css["Start / Sit"] += table["Start / Sit"].map(advice_css)
+    css["Injury"] += table["Injury"].map(injury_css)
+    return css
+
+
+def tag(text: str, kind: str = "") -> str:
+    classes = f"gl-tag gl-tag-{kind}" if kind else "gl-tag"
+    return f'<span class="{classes}">{html_text(text)}</span>'
+
+
+def advice_tag(advice: str) -> str:
+    return tag(advice, {"Start": "start", "Sit": "sit"}.get(advice, ""))
+
+
+def player_tags(row: Any, *, advice: bool = True) -> str:
+    """Position rank, tier, start/sit and any injury designation as one row of tags."""
+    tags = [tag(f"{row['position']}{int(row['rank'])}")]
+    if not pd.isna(row["tier"]):
+        tags.append(tag(f"Tier {int(row['tier'])}"))
+    if advice:
+        tags.append(advice_tag(str(row["advice"])))
+    injury = str(row["injury_status"])
+    if injury != "None":
+        tags.append(tag(injury, "questionable" if injury == "Questionable" else "out"))
+    return '<div class="gl-tags">' + "".join(tags) + "</div>"
 
 
 weeks = run(
@@ -412,14 +536,18 @@ upcoming_week = int(upcoming.iloc[0]) if not upcoming.empty else None
 default_week = upcoming_week if upcoming_week is not None else int(weeks["week"].max())
 week_options = [int(w) for w in weeks["week"]]
 
-st.sidebar.header("Settings")
+st.sidebar.subheader("Week", anchor=False)
 week = st.sidebar.selectbox(
     "Week",
     week_options,
     index=week_options.index(default_week),
     format_func=lambda w: f"Week {w}" + (" (upcoming)" if w == upcoming_week else ""),
+    label_visibility="collapsed",
 )
-format_label = st.sidebar.radio("Scoring", list(FORMATS), key="scoring_format")
+st.sidebar.subheader("Scoring", anchor=False)
+format_label = st.sidebar.radio(
+    "Scoring", list(FORMATS), key="scoring_format", label_visibility="collapsed"
+)
 fmt = FORMATS[str(format_label)]
 
 scoring: dict[str, Any] = {}
@@ -457,10 +585,9 @@ if fmt == "custom":
         "bonus_pass_300": bonus_300,
     }
     st.sidebar.caption(
-        "Custom points are computed from each player's projected stat line"
-        + (" by the FANTASY_POINTS UDF in Snowflake." if source().name == "snowflake" else ".")
-        + " Floors and ceilings are scaled from PPR. Yardage bonuses applied to an average "
-        "stat line understate their real value."
+        "Points are recomputed from each player's projected stat line. Ranges are scaled "
+        "from PPR, and yardage bonuses come out low because they are applied to an average "
+        "stat line."
     )
 settings_json = json.dumps(scoring, sort_keys=True) if fmt == "custom" else ""
 # Naive timestamps (Snowflake TIMESTAMP_NTZ) are UTC.
@@ -468,12 +595,10 @@ as_of = pd.to_datetime(
     run("select max(generated_at) as generated_at from marts.mart_cheat_sheet")["generated_at"],
     utc=True,
 ).iloc[0]
+clock = f"{as_of:%I:%M %p}".lstrip("0")
 st.sidebar.caption(
-    f"Data as of {as_of:%b} {as_of.day}, {as_of:%Y %H:%M} UTC, from {source().description}."
-)
-st.sidebar.markdown(
-    f"Built on Databricks and Snowflake. [How it works]({REPO_URL}#readme) · "
-    f"[Source code]({REPO_URL})"
+    f"Updated {as_of:%b} {as_of.day}, {as_of:%Y}, {clock} UTC",
+    help=f"Projections generated {as_of:%Y-%m-%d %H:%M} UTC, read from {source().description}.",
 )
 
 
@@ -503,43 +628,21 @@ def headline_numbers() -> dict[str, str]:
 
 
 week_info = weeks[weeks["week"] == week].iloc[0]
-masthead.markdown(MASTHEAD.format(season=season, week=week), unsafe_allow_html=True)
-st.header(f"Week {week} cheat sheet")
-if week_info["kind"] == "live":
-    st.caption(
-        f"{season} week {week}: live projections from the weekly Databricks job. A "
-        "projection is frozen once its game kicks off, so past weeks show exactly what was "
-        "published beforehand."
-    )
-else:
-    st.caption(
-        f"{season} week {week}: projected by the walk-forward backtest (a model trained on "
-        "earlier seasons, using only information from before kickoff), because live "
-        "projections started later in the season."
-    )
+st.markdown(
+    HEADER.format(
+        season=season,
+        week=week,
+        scoring="Custom scoring" if fmt == "custom" else format_label,
+    ),
+    unsafe_allow_html=True,
+)
+nav = st.container()  # the section tabs, filled in once the sections are defined
 
 # Every position for the selected week and format, best projection first. Sections slice
 # it by position; it is computed (and cached) once per week, format and settings.
 everyone = week_sheets(season, week, fmt, settings_json).sort_values(
     "proj", ascending=False, kind="stable"
 )
-
-headline = headline_numbers()
-metric_columns = st.columns(3)
-metric_columns[0].metric(f"Players projected, week {week}", f"{len(everyone):,}")
-if headline:
-    metric_columns[1].metric(
-        "Less error than a last-3-games average",
-        headline["error_cut"],
-        help="Mean absolute error in PPR points, weighted across positions, in the "
-        f"{headline['scope']} walk-forward backtest. See Track record.",
-    )
-    metric_columns[2].metric(
-        "Player-weeks backtested",
-        headline["player_weeks"],
-        help=f"Seasons {headline['scope']}, each projected only with information from "
-        "before kickoff.",
-    )
 
 
 def position_sheet(position: str) -> pd.DataFrame:
@@ -576,38 +679,80 @@ def as_players(frame: pd.DataFrame) -> list[Any]:
     ]
 
 
+def section_title(title: str, note: str) -> None:
+    st.header(title, anchor=False)
+    st.caption(note)
+
+
 def cheat_sheet_section() -> None:
-    position = str(st.radio("Position", POSITIONS, horizontal=True, key="position"))
+    intro, numbers = st.columns([5, 4], vertical_alignment="bottom")
+    with intro:
+        section_title(
+            f"Week {week} cheat sheet",
+            "Each projection locks at kickoff, so past weeks show exactly what was published "
+            "before the games."
+            if week_info["kind"] == "live"
+            else "Live projections started later in the season, so this week comes from the "
+            "backtest: a model trained on earlier seasons, using only what was known before "
+            "kickoff.",
+        )
+    headline = headline_numbers()
+    with numbers.container(key="kpis"):
+        cells = st.columns(3)
+        cells[0].metric("Players projected", f"{len(everyone):,}")
+        if headline:
+            cells[1].metric(
+                "Less error than a 3-game average",
+                headline["error_cut"],
+                help="Mean absolute error in PPR points, weighted across positions, in the "
+                f"{headline['scope']} backtest, against each player's average over his last "
+                "three games. See Track record.",
+            )
+            cells[2].metric(
+                "Player-weeks backtested",
+                headline["player_weeks"],
+                help=f"Seasons {headline['scope']}, each projected only with information from "
+                "before kickoff.",
+            )
+
+    picker, finder, toggle = st.columns([3, 4, 3], vertical_alignment="center")
+    position = str(
+        picker.radio(
+            "Position", POSITIONS, horizontal=True, key="position", label_visibility="collapsed"
+        )
+    )
     sheet = position_sheet(position)
-    search = st.text_input(
+    search = finder.text_input(
         "Find a player",
         key="search",
-        placeholder="Name, initials or a close spelling",
+        placeholder="Find a player: name, initials or a close spelling",
         max_chars=player_search.MAX_QUERY_CHARS,
+        label_visibility="collapsed",
     )
-    show_all = st.toggle("Show every projected player", key="show_all")
+    show_all = toggle.toggle("Show every projected player", key="show_all")
     view = sheet if show_all else sheet[sheet["rank"] <= POOL[position]]
     if search.strip():
         found = [m.player.player_id for m in player_search.search(as_players(sheet), search)]
         view = sheet.set_index("player_id").loc[found].reset_index() if found else sheet.head(0)
     if bool(week_info["upcoming"]) and (sheet["injury_status"] == "None").all():
         st.info(
-            "No game-status designations yet for this week: they come with the final "
-            "injury report (Friday for Sunday games), and the Saturday run picks them up."
+            "No injury designations yet this week. They come with the final injury report "
+            "(Friday for Sunday games) and show up after the Saturday update."
         )
+    # Name, projection and call first, so they fit on a phone without scrolling the table.
     table = pd.DataFrame(
         {
             "Tier": view["tier"],
             "Rank": view["rank"],
             "Player": view["player_name"],
-            "Team": view["team"],
-            "Matchup": view["matchup"],
             "Proj": view["proj"].round(1),
+            "Start / Sit": view["advice"],
             "Range (10th-90th)": [
                 fmt_range(lo, hi) for lo, hi in zip(view["floor"], view["ceiling"], strict=True)
             ],
             "Injury": view["injury_status"].replace({"None": ""}),
-            "Start / Sit": view["advice"],
+            "Team": view["team"],
+            "Matchup": view["matchup"],
         }
     )
     if view["ecr_rank"].notna().any():
@@ -617,23 +762,28 @@ def cheat_sheet_section() -> None:
     box_score(
         table,
         {
-            "Proj": st.column_config.NumberColumn(format="%.1f"),
+            "Tier": st.column_config.NumberColumn(format="%d", width=52),
+            "Rank": st.column_config.NumberColumn(format="%d", width=56),
+            "Player": st.column_config.TextColumn(width=150),
+            "Proj": st.column_config.NumberColumn(format="%.1f", width=64),
+            "Expert rank": st.column_config.NumberColumn(format="%d"),
             "Actual": st.column_config.NumberColumn(format="%.1f"),
         },
-        flagged=("Injury", "Start / Sit"),
+        styles=sheet_styles,
     )
 
     chart_rows = sheet.head(CHART_PLAYERS).assign(
         label=lambda d: d["rank"].astype(str) + ". " + d["player_name"]
     )
     if not chart_rows.empty:
+        st.subheader(f"Top {len(chart_rows)} {position}s: projection and range", anchor=False)
         base = alt.Chart(chart_rows).encode(
             y=alt.Y("label:N", sort=None, title=None, axis=alt.Axis(labelOverlap=False)),
-            # Tiers alternate green and gray, like shaded bands in a printed table.
+            # Tiers alternate green and gray, like the shaded bands in the table.
             color=alt.Color("tier:O", title="Tier", scale=alt.Scale(range=[GREEN, GRAY])),
             tooltip=["player_name", "matchup", alt.Tooltip("proj:Q", format=".1f"), "tier"],
         )
-        ranges = base.mark_rule(strokeWidth=3, opacity=0.5).encode(
+        ranges = base.mark_rule(strokeWidth=3, opacity=0.45).encode(
             x=alt.X("floor:Q", title="Fantasy points (10th to 90th percentile range)"),
             x2="ceiling:Q",
         )
@@ -643,13 +793,13 @@ def cheat_sheet_section() -> None:
 
 def render_player_card(player: pd.Series) -> None:
     """One player: this week's projection and the season so far."""
-    name, position, team = (
-        html.escape(str(player[c])) for c in ("player_name", "position", "team")
-    )
     this_week = everyone[everyone["player_id"] == player["player_id"]]
     with st.container(key="player_card"):
+        meta = f"{html_text(player['position'])} · {html_text(player['team'])}"
+        tags = "" if this_week.empty else player_tags(this_week.iloc[0])
         st.markdown(  # raw HTML for the card's styling, so every value is HTML-escaped
-            f'<p class="gl-card-name">{name}</p><p class="gl-card-meta">{position}, {team}</p>',
+            f'<p class="gl-card-name">{html_text(player["player_name"])}</p>'
+            f'<div class="gl-tagline">{meta}</div>{tags}',
             unsafe_allow_html=True,
         )
         if this_week.empty:
@@ -659,13 +809,11 @@ def render_player_card(player: pd.Series) -> None:
             cells = st.columns(4)
             cells[0].metric(f"Week {week} projection", f"{row['proj']:.1f}")
             cells[1].metric("Range (10th-90th)", fmt_range(row["floor"], row["ceiling"]))
-            tier = "" if pd.isna(row["tier"]) else f", tier {int(row['tier'])}"
-            cells[2].metric("Position rank", f"{row['position']}{int(row['rank'])}{tier}")
-            cells[3].metric("Start / Sit", str(row["advice"]))
-            injury = row["injury_status"]
-            st.caption(
-                f"{plain(row['matchup'])}, team total {row['implied_points']:.1f}"
-                + (f". Injury report: :red[{plain(injury)}]" if injury != "None" else "")
+            cells[2].metric("Matchup", plain(row["matchup"]))
+            cells[3].metric(
+                "Team total",
+                f"{row['implied_points']:.1f}",
+                help="Points his team is expected to score, from the betting lines",
             )
 
     games = run(
@@ -678,9 +826,10 @@ def render_player_card(player: pd.Series) -> None:
     if games.empty:
         st.caption(f"No games yet in {season}.")
         return
-    st.markdown(
-        f"**{season} so far:** {len(games)} games, {games['fantasy_points_ppr'].mean():.1f} PPR "
-        f"points per game, best {games['fantasy_points_ppr'].max():.1f}."
+    st.subheader(f"{season} so far", anchor=False)
+    st.caption(
+        f"{len(games)} games, {games['fantasy_points_ppr'].mean():.1f} PPR points per game, "
+        f"best {games['fantasy_points_ppr'].max():.1f}."
     )
     log = pd.DataFrame(
         {
@@ -708,6 +857,7 @@ def render_player_card(player: pd.Series) -> None:
     trend["series"] = trend["series"].map(
         {"fantasy_points_ppr": "Actual", "proj_ppr": "Projected before kickoff"}
     )
+    series = ["Actual", "Projected before kickoff"]
     show_chart(
         alt.Chart(trend)
         .mark_line(point=True)
@@ -717,7 +867,13 @@ def render_player_card(player: pd.Series) -> None:
             color=alt.Color(
                 "series:N",
                 title=None,
-                scale=alt.Scale(range=[GREEN, GRAY]),
+                scale=alt.Scale(domain=series, range=[GREEN, GRAY]),
+                legend=KEY,
+            ),
+            strokeDash=alt.StrokeDash(
+                "series:N",
+                title=None,
+                scale=alt.Scale(domain=series, range=[[1, 0], [5, 3]]),
                 legend=KEY,
             ),
         )
@@ -730,6 +886,11 @@ def use_suggestion(name: str) -> None:
 
 
 def player_index_section() -> None:
+    section_title(
+        "Player index",
+        "Search by name, last name first, initials, nickname or a close spelling, or browse by "
+        "last name. Team and position words narrow the list.",
+    )
     roster = season_players(season)
     universe = as_players(roster)
     relevance = dict(zip(everyone["player_id"].astype(str), everyone["proj"], strict=True))
@@ -738,10 +899,7 @@ def player_index_section() -> None:
         key="index_query",
         placeholder="Try: cmc, jsn, mccaffery, jefferson justin, lions wr, chiefs rb",
         max_chars=player_search.MAX_QUERY_CHARS,
-    )
-    st.caption(
-        "Finds players by full or partial name, last name first, initials, common nicknames "
-        "and close spellings. Team and position words narrow the list."
+        label_visibility="collapsed",
     )
     if query.strip():
         matches = player_search.search(universe, query, relevance)
@@ -758,7 +916,7 @@ def player_index_section() -> None:
         clear_winner = len(matches) == 1 or (strong and matches[0].score > matches[1].score)
     else:
         letters = sorted({player_search.index_letter(p.name) for p in universe})
-        left, right = st.columns([3, 1])
+        left, right = st.columns([3, 1], vertical_alignment="bottom")
         letter = left.radio("Index", letters, horizontal=True, key="index_letter")
         position_filter = right.selectbox("Position", ["All", *POSITIONS], key="index_position")
         in_letter = roster[roster["player_name"].map(player_search.index_letter) == letter]
@@ -775,12 +933,8 @@ def player_index_section() -> None:
             "Player": listing["player_name"],
             "Pos": listing["position"],
             "Team": listing["team"],
-            f"Week {week}": listing["player_id"]
-            .map(projections["proj"])
-            .map(lambda v: "" if pd.isna(v) else f"{v:.1f}"),
-            "Rank": listing["player_id"]
-            .map(projections["rank"])
-            .map(lambda v: "" if pd.isna(v) else str(int(v))),
+            f"Week {week}": listing["player_id"].map(projections["proj"]).round(1),
+            "Rank": listing["player_id"].map(projections["rank"]).astype("Int64"),
         }
     )
     if "Found by" in listing:
@@ -789,6 +943,12 @@ def player_index_section() -> None:
         st.caption(f"{len(table)} player{'s' if len(table) != 1 else ''}. Select a row to open it.")
         index_event = box_score(
             table,
+            {
+                f"Week {week}": st.column_config.NumberColumn(
+                    format="%.1f", help=f"Week {week} projection; blank if not projected"
+                ),
+                "Rank": st.column_config.NumberColumn(format="%d", help="Position rank"),
+            },
             on_select="rerun",
             selection_mode="single-row",
             key=f"index_table_{query.strip().lower()}_{len(table)}",
@@ -800,7 +960,22 @@ def player_index_section() -> None:
             render_player_card(listing.iloc[0])
 
 
+def compare_card(row: dict[Hashable, Any], verdict: str) -> str:
+    """One player in the comparison, as raw HTML; ``verdict`` is "Start", "Sit" or ""."""
+    pick = " gl-compare-pick" if verdict == "Start" else ""
+    return (
+        f'<div class="gl-compare{pick}">{advice_tag(verdict) if verdict else ""}'
+        f'<p class="gl-compare-name">{html_text(row["player_name"])}</p>'
+        f'<p class="gl-compare-proj">{row["proj"]:.1f}<span>projected points</span></p>'
+        f"{player_tags(row, advice=False)}"
+        f'<p class="gl-compare-line">{html_text(row["matchup"])}, team total '
+        f"{row['implied_points']:.1f}</p>"
+        f'<p class="gl-compare-line">Range {fmt_range(row["floor"], row["ceiling"])}</p></div>'
+    )
+
+
 def start_sit_section() -> None:
+    section_title("Start / Sit", "Compare up to three players for one lineup spot.")
     labels = {
         row.player_id: f"{row.player_name} ({row.position}, {row.team})"
         for row in everyone.itertuples()
@@ -810,7 +985,7 @@ def start_sit_section() -> None:
     backs = everyone[everyone["position"] == "RB"].sort_values("proj", ascending=False)
     example = [labels[pid] for pid in backs["player_id"].iloc[11:13]]
     chosen_labels = st.multiselect(
-        "Compare up to three players",
+        "Players to compare",
         list(by_label),
         default=example,
         max_selections=3,
@@ -823,31 +998,26 @@ def start_sit_section() -> None:
         return
     picked = everyone.set_index("player_id").loc[chosen].reset_index()
     picked = picked.sort_values("proj", ascending=False).reset_index(drop=True)
-    columns = st.columns(len(picked))
-    for column, row in zip(columns, picked.to_dict("records"), strict=True):
-        injury = row["injury_status"]
-        with column:
-            st.metric(plain(row["player_name"]), f"{row['proj']:.1f}", help="Projected points")
-            advice = plain(row["advice"])
-            if row["advice"] == "Sit":
-                advice = f":red[{advice}]"
-            tier = "" if pd.isna(row["tier"]) else f" | tier {int(row['tier'])}"
-            st.caption(
-                f"{plain(row['position'])}{row['rank']}{tier} | {advice}\n\n"
-                f"{plain(row['matchup'])}, team total {row['implied_points']:.1f}\n\n"
-                f"Range {fmt_range(row['floor'], row['ceiling'])}"
-                + (f"\n\nInjury: :red[{plain(injury)}]" if injury != "None" else "")
-            )
     if len(picked) > 1:
         best, second = picked.iloc[0], picked.iloc[1]
         margin = best["proj"] - second["proj"]
         overlap = min(best["ceiling"], second["ceiling"]) - max(best["floor"], second["floor"])
         width = best["ceiling"] - best["floor"]
-        close = margin < 1.0 or overlap > 0.8 * width
+        if overlap > 0.8 * width:
+            why = ", but their ranges overlap almost entirely, so it is a close call."
+        else:
+            why = ", a close call." if margin < 1.0 else "."
         st.markdown(
-            f"**Start {plain(best['player_name'])}**: projected {margin:.1f} points ahead"
-            + (", a close call given how much the ranges overlap." if close else ".")
+            f'<div class="gl-verdict"><p class="gl-verdict-call"><span>Start</span> '
+            f"{html_text(best['player_name'])}</p>"
+            f'<p class="gl-verdict-why">Projected {margin:.1f} points ahead of '
+            f"{html_text(second['player_name'])}{why}</p></div>",
+            unsafe_allow_html=True,
         )
+    columns = st.columns(len(picked))
+    for index, (column, row) in enumerate(zip(columns, picked.to_dict("records"), strict=True)):
+        verdict = "" if len(picked) == 1 else ("Start" if index == 0 else "Sit")
+        column.markdown(compare_card(row, verdict), unsafe_allow_html=True)
     history = run(
         "select player_id, week, fantasy_points_ppr, proj_ppr from marts.mart_player_game_log "
         "where season = ? and week < ? order by week",
@@ -856,7 +1026,7 @@ def start_sit_section() -> None:
     recent = history[history["player_id"].isin(chosen)]
     if not recent.empty:
         recent = recent.assign(player=recent["player_id"].map(labels))
-        st.markdown("**Recent games (PPR)**")
+        st.subheader("Recent games, PPR points", anchor=False)
         show_chart(
             alt.Chart(recent)
             .mark_line(point=True)
@@ -866,7 +1036,11 @@ def start_sit_section() -> None:
                 color=alt.Color(
                     "player:N",
                     title=None,
-                    scale=alt.Scale(range=[GREEN, INK, GRAY]),
+                    # The recommended player in green, the others in ink and gray.
+                    scale=alt.Scale(
+                        domain=[labels[pid] for pid in picked["player_id"]],
+                        range=[GREEN, INK, GRAY],
+                    ),
                     legend=KEY,
                 ),
             )
@@ -875,11 +1049,10 @@ def start_sit_section() -> None:
 
 
 def risers_section() -> None:
-    st.caption(
-        "Usage over each player's last three games against his earlier games this season "
-        "(or last season, early on). Expected PPR points (ffverse expected fantasy points) "
-        "turn targets, carries and their field position into points; a riser gained at "
-        "least 2.5 expected points per game and now averages 5 or more."
+    section_title(
+        "Risers",
+        "Players whose role is growing: at least 2.5 more expected PPR points per game over "
+        "their last three games than before, and 5 or more now.",
     )
     show_every_change = st.toggle("Show every usage change, not just risers", key="all_changes")
     movers = run(
@@ -891,45 +1064,69 @@ def risers_section() -> None:
     if movers.empty:
         st.caption("No usage trends for this week yet (each player needs three games).")
         return
+
+    def change_styles(table: pd.DataFrame) -> pd.DataFrame:
+        css = pd.DataFrame("", index=table.index, columns=table.columns)
+        css["Player"] = "font-weight: 500"
+        css["Change"] = [
+            f"font-weight: 600; color: {GREEN if v > 0 else RED if v < 0 else INK}"
+            for v in table["Change"]
+        ]
+        return css
+
     box_score(
         pd.DataFrame(
             {
                 "Player": movers["player_name"],
                 "Pos": movers["position"],
                 "Team": movers["team"],
+                "Change": movers["expected_ppr_change"].round(1),
                 "xPPR last 3": movers["expected_ppr_recent"].round(1),
                 "xPPR before": movers["expected_ppr_before"].round(1),
-                "Change": movers["expected_ppr_change"].round(1),
                 "Snap share": (movers["snap_share_recent"] * 100).round(0),
                 "Snap change": (movers["snap_share_change"] * 100).round(0),
                 "Target share change": (movers["target_share_change"] * 100).round(1),
-                "This week": movers["proj_ppr"].map(lambda v: "" if pd.isna(v) else f"{v:.1f}"),
-                "Rank": movers["pos_rank_ppr"].map(lambda v: "" if pd.isna(v) else str(int(v))),
+                "This week": movers["proj_ppr"].round(1),
+                "Rank": movers["pos_rank_ppr"].astype("Int64"),
             }
         ),
         {
+            "Change": st.column_config.NumberColumn(
+                format="%+.1f", help="Change in expected PPR points per game"
+            ),
             "xPPR last 3": st.column_config.NumberColumn(
-                format="%.1f", help="Expected PPR points per game over the last three games"
+                format="%.1f",
+                help="Expected PPR points per game over the last three games: targets, "
+                "carries and where on the field they came, valued in points (ffverse)",
             ),
             "xPPR before": st.column_config.NumberColumn(
-                format="%.1f", help="Expected PPR points per game before that"
+                format="%.1f",
+                help="Expected PPR points per game before that: earlier this season, or last "
+                "season early on",
             ),
-            "Change": st.column_config.NumberColumn(format="%.1f"),
-            "Target share change": st.column_config.NumberColumn(format="%.1f"),
-            "This week": st.column_config.TextColumn(
-                help="This week's PPR projection; blank if not projected"
+            "Snap share": st.column_config.NumberColumn(format="%d%%"),
+            "Snap change": st.column_config.NumberColumn(format="%+d"),
+            "Target share change": st.column_config.NumberColumn(format="%+.1f"),
+            "This week": st.column_config.NumberColumn(
+                format="%.1f", help="This week's PPR projection; blank if not projected"
             ),
-            "Rank": st.column_config.TextColumn(help="Position rank this week"),
+            "Rank": st.column_config.NumberColumn(format="%d", help="Position rank this week"),
         },
+        styles=change_styles,
     )
     if movers["proj_ppr"].isna().any():
         st.caption("Blank projection: not projected this week (bye week or not expected to play).")
 
 
 def track_record_section() -> None:
+    section_title(
+        "Track record",
+        "How the projections did against simple averages and expert rankings, scored only "
+        "on games played after each projection was made.",
+    )
     summary = run("select * from marts.mart_backtest_summary order by scope, position, method")
     scopes = sorted(summary["scope"].unique(), key=scope_order, reverse=True)
-    scope = st.selectbox("Backtest seasons", scopes, key="scope")
+    scope = st.selectbox("Seasons", scopes, key="scope")
     chosen_scope = summary[summary["scope"] == scope]
     pivot = chosen_scope.pivot_table(index="position", columns="method", values=["mae", "spearman"])
     record = pd.DataFrame(
@@ -944,22 +1141,48 @@ def track_record_section() -> None:
     coverage = chosen_scope[chosen_scope["method"] == "model"].set_index("position")
     record["Inside 10th-90th"] = coverage["interval_coverage"] * 100
     record["Player-weeks"] = coverage["n"]
-    two_places = st.column_config.NumberColumn(format="%.2f")
+    record = record.reset_index().rename(columns={"position": "Position"})
+    errors = ["Model MAE", "Last 3 MAE", "Season avg MAE"]
+    rankings = ["Model rank corr.", "Expert (ECR) rank corr."]
+
+    def best_styles(table: pd.DataFrame) -> pd.DataFrame:
+        """The best figure in each row green: the lowest error and the highest correlation."""
+        css = pd.DataFrame(f"color: {MUTED}", index=table.index, columns=table.columns)
+        css[["Position", *errors, *rankings]] = f"color: {INK}"
+        best = f"color: {GREEN}; font-weight: 600"
+        css[errors] = css[errors].mask(table[errors].eq(table[errors].min(axis=1), axis=0), best)
+        css[rankings] = css[rankings].mask(
+            table[rankings].eq(table[rankings].max(axis=1), axis=0), best
+        )
+        return css
+
+    error_help = "Average miss in PPR points per player-week; lower is better"
+    rank_help = "Spearman rank correlation within each week, averaged; higher is better"
     box_score(
-        record.reset_index().rename(columns={"position": "Position"}),
+        record,
         {
-            **{name: two_places for name in record.columns if "MAE" in name or "corr" in name},
-            "Inside 10th-90th": st.column_config.NumberColumn(format="%.0f%%"),
+            **{
+                name: st.column_config.NumberColumn(format="%.2f", help=error_help)
+                for name in errors
+            },
+            **{
+                name: st.column_config.NumberColumn(format="%.2f", help=rank_help)
+                for name in rankings
+            },
+            "Inside 10th-90th": st.column_config.NumberColumn(
+                format="%.0f%%",
+                help="Share of results inside the 10th-90th percentile range; about 80% is "
+                "well calibrated",
+            ),
             "Player-weeks": st.column_config.NumberColumn(format="%d"),
         },
+        styles=best_styles,
     )
     st.caption(
-        "Walk-forward backtest: each season is projected by a model trained only on earlier "
-        "seasons, with features from before each game. Scored on the players FantasyPros "
-        f"ranked in the top {POOL_TEXT} that week. MAE is in PPR "
-        "points (lower is better); rank correlation is Spearman's, within each week "
-        "(higher is better). Expert rankings have no point values, so they are only "
-        "compared on ranking. A calibrated 80% range should contain about 80% of outcomes."
+        "Green marks the best figure in each row. Each season is projected by a model "
+        "trained only on earlier seasons and scored on the players FantasyPros ranked in the "
+        f"top {POOL_TEXT} that week. Expert rankings have no point values, so they are "
+        "compared on ranking only."
     )
 
     weekly = run(
@@ -969,7 +1192,7 @@ def track_record_section() -> None:
     seasons = sorted(weekly["season"].unique(), reverse=True)
     if not seasons:
         return
-    left, right = st.columns(2)
+    left, right = st.columns(2, vertical_alignment="bottom")
     record_season = left.selectbox("Season", seasons, key="record_season")
     record_position = right.radio("Position", POSITIONS, horizontal=True, key="record_position")
     detail = weekly[(weekly["season"] == record_season) & (weekly["position"] == record_position)]
@@ -987,7 +1210,7 @@ def track_record_section() -> None:
 
     def method_chart(methods: list[str], value: str, title: str) -> Any:
         """One line per method; the key lists only the methods drawn."""
-        colors, dashes = zip(*(METHOD_STYLE[m] for m in methods), strict=True)
+        colors, dashes, widths = zip(*(METHOD_STYLE[m] for m in methods), strict=True)
         return (
             alt.Chart(detail[detail["method"].isin(methods)])
             .mark_line(point=True)
@@ -1006,29 +1229,26 @@ def track_record_section() -> None:
                     scale=alt.Scale(domain=methods, range=dashes),
                     legend=KEY,
                 ),
+                strokeWidth=alt.StrokeWidth(
+                    "method:N", scale=alt.Scale(domain=methods, range=widths), legend=None
+                ),
             )
             .properties(height=280)
         )
 
-    st.markdown("**Points: lower is better**")
-    show_chart(
-        method_chart(
-            ["Model", "Last 3 average", "Season average"], "mae", "Mean absolute error (PPR)"
-        )
-    )
-    st.markdown("**Ranking: higher is better**")
+    st.subheader("Average miss per player: lower is better", anchor=False)
+    show_chart(method_chart(["Model", "Last 3 average", "Season average"], "mae", "PPR points"))
+    st.subheader("Ranking accuracy: higher is better", anchor=False)
     show_chart(method_chart(["Model", "Expert rankings"], "spearman", "Rank correlation"))
     live_weeks = detail[detail["kind"] == "live"]["week"].unique()
     st.caption(
-        f"Weeks scored with live (pre-game) projections in {record_season}: "
+        f"Weeks with live projections in {record_season}: "
         + (", ".join(str(w) for w in sorted(live_weeks)) if len(live_weeks) else "none yet")
-        + ". Other weeks come from the walk-forward backtest."
+        + ". The other weeks come from the backtest."
     )
 
 
-# Section navigation that keeps its place when a widget reruns the script (built-in tabs
-# jump back to the first tab on a rerun), set as a newspaper's section links. Only the
-# selected section runs.
+# Only the selected section runs.
 SECTIONS: dict[str, Callable[[], None]] = {
     "Cheat sheet": cheat_sheet_section,
     "Player index": player_index_section,
@@ -1036,14 +1256,14 @@ SECTIONS: dict[str, Callable[[], None]] = {
     "Risers": risers_section,
     "Track record": track_record_section,
 }
-section = st.radio(
+section = nav.radio(
     "Section", list(SECTIONS), horizontal=True, key="section", label_visibility="collapsed"
 )
 SECTIONS[str(section)]()
 
 st.markdown(
-    f'<div class="gl-footer">Gridiron Lakehouse, built by Rett Wilson. '
-    f'<a href="{REPO_URL}">Source code and method</a>. Data: nflverse (CC BY 4.0) and ffverse '
-    "expected fantasy points; FantasyPros expert ranks are used for evaluation only.</div>",
+    f'<div class="gl-footer">Built by Rett Wilson · <a href="{REPO_URL}">Source code</a> · '
+    "Data: nflverse (CC BY 4.0) and ffverse expected fantasy points. FantasyPros expert "
+    "ranks are used only to grade the model.</div>",
     unsafe_allow_html=True,
 )

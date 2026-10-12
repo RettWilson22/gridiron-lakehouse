@@ -227,9 +227,10 @@ has succeeded:
    `01_projection_results_stream_task.sql`.
 4. The snapshot export from section 4, when the public copy should catch up.
 
-Both apps show the newest `generated_at` in the sidebar ("Data as of ..."), and the public
-copy also shows the date its snapshot was exported, so a missed step shows up there. A
-scheduled GitHub Action or dbt Projects on Snowflake could run steps 1 and 2.
+Both apps show the newest `generated_at` in the sidebar ("Updated ..."), and its tooltip
+names the source, which for the public copy includes the date its snapshot was exported, so
+a missed step shows up there. A scheduled GitHub Action or dbt Projects on Snowflake could
+run steps 1 and 2.
 
 ## The Iceberg path (workspaces with external storage)
 

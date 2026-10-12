@@ -8,19 +8,22 @@ enableStaticServing = true
 
 [theme]
 base = "light"
-primaryColor = "#2f5d3a"
-backgroundColor = "#f7f4ec"
-secondaryBackgroundColor = "#f7f4ec"
-textColor = "#1b1b1b"
-linkColor = "#2f5d3a"
-redTextColor = "#a33a2c"
-borderColor = "#8a8272"
-dataframeBorderColor = "#ddd6c7"
-dataframeHeaderBackgroundColor = "#f7f4ec"
+primaryColor = "#1e6b3c"
+# Tables and inputs are white; the app's CSS tints the page around them.
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#16181c"
+linkColor = "#1e6b3c"
+redTextColor = "#b42318"
+greenTextColor = "#1e6b3c"
+borderColor = "#857f74"
+dataframeBorderColor = "#dcd8cf"
+dataframeHeaderBackgroundColor = "#f6f4ef"
+dataframeHeaderTextColor = "#5c6168"
 showWidgetBorder = true
-baseRadius = "0px"
-buttonRadius = "0px"
-chartCategoricalColors = ["#2f5d3a", "#1b1b1b", "#8a8272", "#a33a2c"]
+baseRadius = "3px"
+buttonRadius = "3px"
+chartCategoricalColors = ["#1e6b3c", "#16181c", "#7b8087", "#b42318"]
 # Barlow and Barlow Semi Condensed (SIL Open Font License, static/fonts/OFL.txt), from the
 # google/fonts repository: subset to Latin and converted to WOFF2, with the text faces'
 # tabular figures made the default, because tables are drawn on a canvas where
@@ -55,8 +58,8 @@ url = "app/static/fonts/BarlowSemiCondensed-Bold.woff2"
 weight = 700
 
 [theme.sidebar]
-backgroundColor = "#efeadf"
-secondaryBackgroundColor = "#f7f4ec"
+backgroundColor = "#eeebe4"
+secondaryBackgroundColor = "#ffffff"
 
 [client]
 toolbarMode = "viewer"

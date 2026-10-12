@@ -6,8 +6,10 @@ Uses the dbt CI build of the fixture marts (``make dbt-ci`` runs before pytest i
 
 from __future__ import annotations
 
+import html
 import importlib.util
 import json
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -18,8 +20,6 @@ import pandas as pd
 import pytest
 import streamlit as st
 from streamlit.testing.v1 import AppTest
-
-from gridiron.config import POSITIONS
 
 ROOT = Path(__file__).parent.parent
 APP = ROOT / "snowflake" / "streamlit" / "streamlit_app.py"
@@ -88,8 +88,38 @@ def test_the_sidebar_says_when_the_data_was_generated(app: AppTest) -> None:
         newest = con.sql("select max(generated_at) from marts.mart_cheat_sheet").fetchone()
     assert newest is not None
     stamp = pd.Timestamp(newest[0]).tz_convert("UTC")
-    expected = f"Data as of {stamp:%b} {stamp.day}, {stamp:%Y %H:%M} UTC, from DuckDB"
-    assert any(c.value.startswith(expected) for c in app.sidebar.caption)
+    clock = f"{stamp:%I:%M %p}".lstrip("0")
+    caption = next(c for c in app.sidebar.caption if c.value.startswith("Updated "))
+    assert caption.value == f"Updated {stamp:%b} {stamp.day}, {stamp:%Y}, {clock} UTC"
+    assert f"generated {stamp:%Y-%m-%d %H:%M} UTC, read from DuckDB" in caption.proto.help
+
+
+def cell_styles(table: Any) -> dict[tuple[int, str], str]:
+    """The CSS the app's pandas Styler gave each cell, by row and column name."""
+    columns = table.value.columns
+    css: dict[tuple[int, str], str] = {}
+    for selectors, body in re.findall(r"([^{}]+)\{([^}]*)\}", table.proto.arrow_data.styler.styles):
+        for row, col in re.findall(r"row(\d+)_col(\d+)", selectors):
+            key = (int(row), str(columns[int(col)]))
+            css[key] = css.get(key, "") + body
+    return css
+
+
+def test_cheat_sheet_colors_the_calls_and_shades_every_other_tier(app: AppTest) -> None:
+    app.radio(key="position").set_value("WR").run()
+    app.toggle(key="show_all").set_value(True).run()
+    assert not app.exception
+    table = sheet(app)
+    assert {"Start", "Flex", "Sit"} <= set(table["Start / Sit"])
+    assert table["Tier"].isna().any() and {1, 2} <= set(table["Tier"].dropna())
+    css = cell_styles(app.dataframe[0])
+    for row, (advice, tier) in enumerate(zip(table["Start / Sit"], table["Tier"], strict=True)):
+        call = css.get((row, "Start / Sit"), "")
+        assert ("#1e6b3c" in call) == (advice == "Start"), (advice, call)
+        assert ("#b42318" in call) == (advice == "Sit"), (advice, call)
+        shaded = "background-color" in css.get((row, "Player"), "")
+        assert shaded == (pd.notna(tier) and tier % 2 == 0), (tier, shaded)
+        assert "font-weight: 600" in css[(row, "Proj")]
 
 
 def test_positions_formats_and_past_weeks(app: AppTest) -> None:
@@ -170,7 +200,15 @@ def test_start_sit_and_other_sections(app: AppTest) -> None:
     options = compare.options[:2]
     compare.set_value(options).run()
     assert not app.exception
-    assert any(md.value.startswith("**Start ") for md in app.markdown)
+    blocks = [md.value for md in app.markdown]
+    verdicts = [i for i, text in enumerate(blocks) if 'class="gl-verdict"' in text]
+    cards = [i for i, text in enumerate(blocks) if 'class="gl-compare' in text]
+    assert len(verdicts) == 1 and len(cards) == 2
+    assert verdicts[0] < cards[0]  # the verdict comes first
+    best = options[0].split(" (")[0]  # options are in projection order
+    assert f"<span>Start</span> {html.escape(best)}</p>" in blocks[verdicts[0]]
+    assert 'class="gl-compare gl-compare-pick"' in blocks[cards[0]]
+    assert ">Start</span>" in blocks[cards[0]] and ">Sit</span>" in blocks[cards[1]]
     open_section(app, "Risers")
     app.toggle(key="all_changes").set_value(True).run()
     open_section(app, "Track record")
@@ -187,10 +225,10 @@ def test_start_sit_shows_a_tier_only_for_tiered_players(app: AppTest) -> None:
     # Options are in projection order: the best player is tier 1, the worst is outside the pool.
     compare.set_value([compare.options[0], compare.options[-1]]).run()
     assert not app.exception
-    lines = [c.value.split("\n\n")[0] for c in app.caption if c.value[:2] in POSITIONS]
-    assert len(lines) == 2
-    assert "| tier 1 |" in lines[0]
-    assert "tier" not in lines[1]
+    cards = [md.value for md in app.markdown if 'class="gl-compare' in md.value]
+    assert len(cards) == 2
+    assert '<span class="gl-tag">Tier 1</span>' in cards[0]
+    assert "Tier" not in cards[1]
 
 
 def card_names(app: AppTest) -> list[str]:
@@ -247,8 +285,8 @@ def test_public_mode_reads_an_exported_snapshot(
     test.run()
     assert not test.exception
     exported = json.loads((tmp_path / "manifest.json").read_text())["exported_at"][:10]
-    captions = " ".join(c.value for c in test.sidebar.caption)
-    assert f"from a static snapshot exported {exported} (public copy)" in captions
+    sources = " ".join(c.proto.help for c in test.sidebar.caption)
+    assert f"read from a static snapshot exported {exported} (public copy)" in sources
     assert not sheet(test).empty
 
 
