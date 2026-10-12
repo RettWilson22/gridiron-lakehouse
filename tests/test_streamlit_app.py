@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import tomllib
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -324,3 +325,15 @@ def test_search_boxes_stop_at_sixty_characters(app: AppTest) -> None:
     assert app.text_input(key="search").max_chars == 60
     open_section(app, "Player index")
     assert app.text_input(key="index_query").max_chars == 60
+
+
+def test_the_public_theme_serves_every_font_it_names() -> None:
+    config = tomllib.loads((PUBLIC_APP.parent / ".streamlit" / "config.toml").read_text())
+    assert config["server"]["enableStaticServing"]
+    faces = config["theme"]["fontFaces"]
+    assert {face["family"] for face in faces} == {"Barlow", "Barlow Semi Condensed"}
+    for face in faces:
+        path = PUBLIC_APP.parent / face["url"].removeprefix("app/")
+        assert path.read_bytes()[:4] == b"wOF2", face["url"]
+    assert config["theme"]["font"].startswith("Barlow,")
+    assert (PUBLIC_APP.parent / "static" / "fonts" / "OFL.txt").exists()

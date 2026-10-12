@@ -40,7 +40,7 @@ logs/
 *.p8
 secrets/
 snowflake/dbt/profiles.local.yml
-.streamlit/secrets.toml
+**/.streamlit/secrets.toml
 
 # OS / editors
 .DS_Store
