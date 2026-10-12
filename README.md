@@ -56,7 +56,7 @@ per-season results and caveats: [docs/methodology.md](docs/methodology.md).
   volume); Snowflake SQL for the warehouse, cost monitor, roles, UDF, stream, task and app;
   DDL generated from the table contracts; a dbt project with Snowflake and DuckDB targets.
 * CI on every push to main: Ruff, strict mypy, a generated-SQL freshness check, a dbt build
-  and its tests on DuckDB fixtures, and 245 pytest tests, including the pipeline on local
+  and its tests on DuckDB fixtures, and 247 pytest tests, including the pipeline on local
   Spark and headless tests of the Streamlit app.
 
 ## Why both platforms?
